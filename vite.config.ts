@@ -16,11 +16,8 @@ export default defineConfig({
   },
   server: {
     proxy: {
-      '/api/42': {
-        target: 'https://api.intra.42.fr',
-        changeOrigin: true,
-        rewrite: (path) => path.replace(/^\/api\/42/, ''),
-      },
+      '/oauth': { target: 'https://api.intra.42.fr', changeOrigin: true },
+      '/v2': { target: 'https://api.intra.42.fr', changeOrigin: true },
     },
   },
 })

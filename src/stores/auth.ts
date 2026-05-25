@@ -47,7 +47,7 @@ export const useAuthStore = defineStore('auth', () => {
     loading.value = true
     error.value = null
     try {
-      const res = await fetch('/api/42/v2/me', {
+      const res = await fetch(`${import.meta.env.VITE_42_API_BASE || ''}/v2/me`, {
         headers: { Authorization: `Bearer ${token.value}` },
       })
       if (!res.ok) {

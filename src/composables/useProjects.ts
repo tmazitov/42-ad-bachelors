@@ -27,7 +27,7 @@ export function useProjects() {
     error.value = null
     try {
       const res = await fetch(
-        `/api/42/v2/users/${userId}/projects_users?filter[status]=finished&sort=-marked_at&per_page=100`,
+        `${import.meta.env.VITE_42_API_BASE || ''}/v2/users/${userId}/projects_users?filter[status]=finished&sort=-marked_at&per_page=100`,
         { headers: { Authorization: `Bearer ${auth.token}` } },
       )
       if (!res.ok) throw new Error(`${res.status}`)

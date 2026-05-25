@@ -1,6 +1,7 @@
 const CLIENT_ID = import.meta.env.VITE_42_CLIENT_ID as string
 const CLIENT_SECRET = import.meta.env.VITE_42_CLIENT_SECRET as string
 const REDIRECT_URI = import.meta.env.VITE_42_REDIRECT_URI as string
+const API_BASE = (import.meta.env.VITE_42_API_BASE as string) || ''
 
 export function redirectToLogin(): void {
   const params = new URLSearchParams({
@@ -13,7 +14,7 @@ export function redirectToLogin(): void {
 }
 
 export async function exchangeCode(code: string): Promise<string> {
-  const res = await fetch('/api/42/oauth/token', {
+  const res = await fetch(`${API_BASE}/oauth/token`, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({

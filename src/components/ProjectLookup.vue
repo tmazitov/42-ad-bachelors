@@ -15,7 +15,7 @@ const error = ref<string | null>(null)
 
 async function fetchPage(page: number): Promise<ApiProject[]> {
   const res = await fetch(
-    `/api/42/v2/cursus/21/projects?per_page=100&page=${page}&sort=name`,
+    `${import.meta.env.VITE_42_API_BASE || ''}/v2/cursus/21/projects?per_page=100&page=${page}&sort=name`,
     { headers: { Authorization: `Bearer ${auth.token}` } },
   )
   if (!res.ok) throw new Error(`${res.status}`)
