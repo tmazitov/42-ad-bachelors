@@ -1,7 +1,7 @@
 const CLIENT_ID = import.meta.env.VITE_42_CLIENT_ID as string
-const CLIENT_SECRET = import.meta.env.VITE_42_CLIENT_SECRET as string
 const REDIRECT_URI = import.meta.env.VITE_42_REDIRECT_URI as string
 const API_BASE = (import.meta.env.VITE_42_API_BASE as string) || ''
+const TOKEN_PROXY = (import.meta.env.VITE_42_TOKEN_PROXY as string) || `${API_BASE}/oauth/token`
 
 export function redirectToLogin(): void {
   const params = new URLSearchParams({
@@ -14,16 +14,10 @@ export function redirectToLogin(): void {
 }
 
 export async function exchangeCode(code: string): Promise<string> {
-  const res = await fetch(`${API_BASE}/oauth/token`, {
+  const res = await fetch(TOKEN_PROXY, {
     method: 'POST',
-    headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
-    body: new URLSearchParams({
-      grant_type: 'authorization_code',
-      client_id: CLIENT_ID,
-      client_secret: CLIENT_SECRET,
-      code,
-      redirect_uri: REDIRECT_URI,
-    }),
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ code, redirect_uri: REDIRECT_URI }),
   })
 
   if (!res.ok) throw new Error(`Token exchange failed: ${res.status}`)
