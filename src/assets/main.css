@@ -1,4 +1,6 @@
 @import "tailwindcss";
+@import "./base.css";
+@custom-variant dark (&:where(.dark, .dark *));
 
 @media (max-width: 639px) {
   .p-dialog {

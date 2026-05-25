@@ -47,7 +47,7 @@ onMounted(async () => {
   <div class="custom-card flex-col items-start gap-3">
     <h2 class="text-xl font-semibold">42 Project ID Lookup</h2>
 
-    <div v-if="loading" class="flex items-center gap-2 text-gray-500">
+    <div v-if="loading" class="flex items-center gap-2 text-gray-500 dark:text-gray-400">
       <i class="pi pi-spin pi-spinner" />
       <span>Fetching… ({{ rows.length }} loaded)</span>
     </div>
@@ -56,22 +56,22 @@ onMounted(async () => {
 
     <div v-else class="w-full overflow-auto max-h-[60vh]">
       <table class="w-full text-sm border-collapse">
-        <thead class="sticky top-0 bg-white dark:bg-gray-900">
-          <tr class="border-b border-gray-200 text-left">
+        <thead class="sticky top-0 bg-white dark:bg-gray-800">
+          <tr class="border-b border-gray-200 dark:border-gray-700 text-left">
             <th class="py-1 pr-4 font-semibold w-16">ID</th>
             <th class="py-1 pr-4 font-semibold">Name</th>
-            <th class="py-1 font-semibold text-gray-400">Slug</th>
+            <th class="py-1 font-semibold text-gray-400 dark:text-gray-500">Slug</th>
           </tr>
         </thead>
         <tbody>
           <tr
             v-for="p in rows"
             :key="p.id"
-            class="border-b border-gray-100 hover:bg-gray-50"
+            class="border-b border-gray-100 dark:border-gray-700 hover:bg-gray-50 dark:hover:bg-gray-800"
           >
-            <td class="py-1 pr-4 font-mono text-gray-500">{{ p.id }}</td>
+            <td class="py-1 pr-4 font-mono text-gray-500 dark:text-gray-400">{{ p.id }}</td>
             <td class="py-1 pr-4">{{ p.name }}</td>
-            <td class="py-1 text-gray-400 font-mono text-xs">{{ p.slug }}</td>
+            <td class="py-1 text-gray-400 dark:text-gray-500 font-mono text-xs">{{ p.slug }}</td>
           </tr>
         </tbody>
       </table>
@@ -87,9 +87,9 @@ onMounted(async () => {
   align-items: center;
   justify-content: space-between;
   padding: 1rem 1.25rem;
-  border: 1px solid var(--p-gray-200);
+  border: 1px solid var(--card-border);
   border-radius: 1.5rem;
-  background: var(--p-gray-50);
+  background: var(--card-bg);
   box-shadow: 0 2px 4px rgba(0, 0, 0, 0.05);
 }
 </style>

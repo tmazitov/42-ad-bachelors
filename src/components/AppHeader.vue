@@ -19,13 +19,16 @@ const avatarUrl = computed(() =>
 
 <template>
   <header class="app-header">
-    <img src="/42-bachelors.png" alt="42" class="app-header__logo rounded-full" />
-
-    <span class="app-header__title">
-      42 AD Bachelors Tracker
+    <span class="flex items-center gap-2">
+      <img src="/42-bachelors.png" alt="42" class="app-header__logo rounded-full" />
+      
+      <span class="app-header__title">
+        42 AD Bachelor's Tracker
+      </span>
     </span>
 
-    <div class="app-header__buttons flex items-center gap-2">
+
+    <div class="app-header__buttons flex items-center gap-4">
 
       <div class="flex items-center gap-3" v-if="auth.isLoggedIn && auth.user">
         <Avatar
@@ -72,9 +75,9 @@ const avatarUrl = computed(() =>
   align-items: center;
   justify-content: space-between;
   padding: 0.5rem;
-  border: 1px solid var(--p-gray-200);
+  border: 1px solid var(--card-border);
   border-radius: 1.5rem;
-  background: var(--p-gray-50);
+  background: var(--card-bg);
 }
 
 .app-header__logo {

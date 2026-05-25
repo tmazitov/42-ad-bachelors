@@ -49,10 +49,10 @@ const sortOrder = ref<1 | -1>(1)
         <span class="font-semibold text-lg leading-tight">{{ label }}</span>
 
         <div class="flex items-center gap-2 sm:ml-auto">
-          <span class="text-sm text-gray-500 whitespace-nowrap">
+          <span class="text-sm text-gray-500 dark:text-gray-400 whitespace-nowrap">
             {{ earned.toFixed(1) }} / {{ max }} {{ unit }}
           </span>
-          <div class="flex-1 sm:w-28 h-2 bg-gray-100 rounded-full overflow-hidden" style="min-width: 4rem">
+          <div class="flex-1 sm:w-28 h-2 bg-gray-100 dark:bg-gray-700 rounded-full overflow-hidden" style="min-width: 4rem">
             <div
               class="h-full rounded-full transition-all duration-500"
               :style="{ width: `${progressPercent}%`, background: color }"

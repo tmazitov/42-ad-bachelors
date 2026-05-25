@@ -131,7 +131,7 @@ const chartOptions = {
 
 <template>
   <div class="custom-card flex-col items-start gap-4">
-    <h2 class="text-xl font-semibold ">Your Bachelor's Progress</h2>
+    <h2 class="text-xl font-semibold ">Your Progress</h2>
 
     <div class="flex flex-col sm:flex-row items-center gap-6 w-full">
 
@@ -140,8 +140,8 @@ const chartOptions = {
         <Doughnut :data="chartData" :options="chartOptions" />
         <div class="absolute inset-0 flex flex-col items-center justify-center pointer-events-none">
           <span class="text-3xl font-bold leading-none">{{ Math.round(progress.percentage) }}%</span>
-          <span class="text-xs text-gray-400 mt-1">{{ Math.round(progress.total) }} / {{ CREDITS_REQUIRED.total }}</span>
-          <span class="text-xs text-gray-400">credits</span>
+          <span class="text-xs text-gray-400 dark:text-gray-500 mt-1">{{ Math.round(progress.total) }} / {{ CREDITS_REQUIRED.total }}</span>
+          <span class="text-xs text-gray-400 dark:text-gray-500">credits</span>
         </div>
         <div ref="tooltipEl" class="chart-tooltip" />
       </div>
@@ -151,12 +151,12 @@ const chartOptions = {
         <div
           v-for="cat in CATEGORIES"
           :key="cat.key"
-          class="flex items-center gap-2 cursor-pointer rounded-lg px-2 py-1 -mx-2 hover:bg-gray-100 transition-colors"
+          class="flex items-center gap-2 cursor-pointer rounded-lg px-2 py-1 -mx-2 hover:bg-gray-50 dark:hover:bg-gray-800 transition-colors"
           @click="openModal(cat)"
         >
           <span class="w-2.5 h-2.5 rounded-full shrink-0" :style="{ background: cat.color }" />
-          <span class="w-36 text-gray-600 shrink-0">{{ cat.label }}</span>
-          <div class="flex-1 h-1.5 rounded-full bg-gray-100 overflow-hidden">
+          <span class="w-36 text-gray-600 dark:text-gray-300 shrink-0">{{ cat.label }}</span>
+          <div class="flex-1 h-1.5 rounded-full bg-gray-100 dark:bg-gray-700 overflow-hidden">
             <div
               class="h-full rounded-full transition-all duration-500"
               :style="{
@@ -165,7 +165,7 @@ const chartOptions = {
               }"
             />
           </div>
-          <span class="text-gray-400 text-xs w-16 text-right shrink-0">
+          <span class="text-gray-400 dark:text-gray-500 text-xs w-16 text-right shrink-0">
             {{ progress[cat.key].toFixed(1) }} / {{ cat.max }}
           </span>
         </div>
@@ -193,9 +193,9 @@ const chartOptions = {
   align-items: center;
   justify-content: space-between;
   padding: 1rem 1.25rem;
-  border: 1px solid var(--p-gray-200);
+  border: 1px solid var(--card-border);
   border-radius: 1.5rem;
-  background: var(--p-gray-50);
+  background: var(--card-bg);
   box-shadow: 0 2px 4px rgba(0, 0, 0, 0.05);
 }
 

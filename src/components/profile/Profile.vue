@@ -42,9 +42,9 @@ function formatDate(iso: string | null): string {
   align-items: center;
   justify-content: space-between;
   padding: 1rem 1.25rem;
-  border: 1px solid var(--p-gray-200);
+  border: 1px solid var(--card-border);
   border-radius: 1.5rem;
-  background: var(--p-gray-50);
+  background: var(--card-bg);
   box-shadow: 0 2px 4px rgba(0, 0, 0, 0.05);
 }
 
