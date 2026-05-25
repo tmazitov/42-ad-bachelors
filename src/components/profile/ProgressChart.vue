@@ -46,7 +46,7 @@ const CATEGORIES: CategoryDef[] = [
     color: '#3b82f6',
     max: CREDITS_REQUIRED.standard,
     unit: 'credits',
-    projects: standardModules.projects.filter((p) => p.code !== 'BAI 498' && p.code !== 'BAI 499'),
+    projects: standardModules.projects.filter((p) => p.code !== 'CCP 161' && p.code !== 'BAI 499'),
   },
   {
     key: 'stream',
@@ -64,22 +64,6 @@ const CATEGORIES: CategoryDef[] = [
     unit: 'credits',
     projects: electiveModules.projects,
   },
-  {
-    key: 'capstone',
-    label: 'Capstone Project',
-    color: '#eab308',
-    max: CREDITS_REQUIRED.capstone,
-    unit: 'credits',
-    projects: standardModules.projects.filter((p) => p.code === 'BAI 498'),
-  },
-  {
-    key: 'internship',
-    label: 'Internship',
-    color: '#14b8a6',
-    max: CREDITS_REQUIRED.internship,
-    unit: 'credits',
-    projects: standardModules.projects.filter((p) => p.code === 'BAI 499'),
-  },
 ]
 
 const selectedCat = ref<CategoryDef | null>(null)
@@ -96,7 +80,7 @@ const chartData = computed(() => {
   return {
     labels: [...CATEGORIES.map((c) => c.label), 'Remaining'],
     datasets: [{
-      data: [p.general, p.standard, p.stream, p.elective, p.capstone, p.internship, remaining],
+      data: [p.general, p.standard, p.stream, p.elective, remaining],
       backgroundColor: [...CATEGORIES.map((c) => c.color), '#e5e7eb'],
       borderWidth: 0,
       borderRadius: 3,
@@ -105,6 +89,32 @@ const chartData = computed(() => {
   }
 })
 
+// External tooltip rendered as DOM element so it sits above the center overlay
+const tooltipEl = ref<HTMLElement | null>(null)
+
+function externalTooltip({ tooltip }: { chart: any; tooltip: any }) {
+  const el = tooltipEl.value
+  if (!el) return
+
+  if (tooltip.opacity === 0) {
+    el.style.opacity = '0'
+    return
+  }
+
+  const title = tooltip.title?.[0] ?? ''
+  const body = tooltip.body?.[0]?.lines?.[0] ?? ''
+  const color = tooltip.labelColors?.[0]?.backgroundColor ?? '#fff'
+
+  el.innerHTML = `
+    <div class="tt-title">${title}</div>
+    <div class="tt-body"><span class="tt-swatch" style="background:${color}"></span>${body}</div>
+  `
+
+  el.style.opacity = '1'
+  el.style.left = tooltip.caretX + 'px'
+  el.style.top = tooltip.caretY + 'px'
+}
+
 const chartOptions = {
   responsive: true,
   maintainAspectRatio: true,
@@ -112,13 +122,8 @@ const chartOptions = {
   plugins: {
     legend: { display: false },
     tooltip: {
-      callbacks: {
-        label: (ctx: { dataIndex: number; parsed: number }) => {
-          const cat = CATEGORIES[ctx.dataIndex]
-          const max = cat ? cat.max : CREDITS_REQUIRED.total
-          return `  ${ctx.parsed.toFixed(1)} / ${max} credits`
-        },
-      },
+      enabled: false,
+      external: externalTooltip,
     },
   },
 }
@@ -138,6 +143,7 @@ const chartOptions = {
           <span class="text-xs text-gray-400 mt-1">{{ Math.round(progress.total) }} / {{ CREDITS_REQUIRED.total }}</span>
           <span class="text-xs text-gray-400">credits</span>
         </div>
+        <div ref="tooltipEl" class="chart-tooltip" />
       </div>
 
       <!-- Legend / breakdown -->
@@ -191,5 +197,39 @@ const chartOptions = {
   border-radius: 1.5rem;
   background: var(--p-gray-50);
   box-shadow: 0 2px 4px rgba(0, 0, 0, 0.05);
+}
+
+.chart-tooltip {
+  position: absolute;
+  z-index: 10;
+  background: rgba(0, 0, 0, 0.8);
+  color: #fff;
+  border-radius: 6px;
+  padding: 6px 10px;
+  font-size: 12px;
+  pointer-events: none;
+  opacity: 0;
+  transition: opacity 0.15s;
+  transform: translate(-50%, calc(-100% - 8px));
+  white-space: nowrap;
+}
+
+.chart-tooltip :deep(.tt-title) {
+  font-weight: 600;
+  margin-bottom: 2px;
+}
+
+.chart-tooltip :deep(.tt-body) {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.chart-tooltip :deep(.tt-swatch) {
+  display: inline-block;
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  flex-shrink: 0;
 }
 </style>

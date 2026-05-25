@@ -35,7 +35,7 @@ export const standardModules = new ProjectGroup('Standard Modules', [
   new Project('MAT 111', 'Polynomial Equation Solving and Mathematical Computation (computorv1)', 0, 1382),
   new Project('MAT 211', 'Linear Algebra Foundations (matrix)', 0, 2077),
   new Project('EMP 101', 'Collaborative Resume (42_Collaborative_resume)', 0, 2623),
-  new Project('BAI 498', 'Senior Capstone Project', 0, null),
+  new Project('BAI 498', 'Senior Capstone Project', 0, 1337),
   new Project('BAI 499', 'Internship', 0, null),
 ])
 
