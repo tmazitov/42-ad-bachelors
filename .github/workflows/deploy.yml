@@ -33,8 +33,8 @@ jobs:
           VITE_42_CLIENT_ID: ${{ secrets.VITE_42_CLIENT_ID }}
           VITE_42_CLIENT_SECRET: ${{ secrets.VITE_42_CLIENT_SECRET }}
           VITE_42_REDIRECT_URI: ${{ secrets.VITE_42_REDIRECT_URI }}
-          VITE_42_API_BASE: https://api.intra.42.fr
-          VITE_42_TOKEN_PROXY: ${{ secrets.VITE_42_TOKEN_PROXY }}
+          VITE_42_API_BASE: ${{ secrets.VITE_42_TOKEN_PROXY }}
+          VITE_42_TOKEN_PROXY: ${{ secrets.VITE_42_TOKEN_PROXY }}/oauth/token
 
       - name: Create 404.html for SPA routing
         run: |
