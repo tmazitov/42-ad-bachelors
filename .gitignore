@@ -39,7 +39,6 @@ __screenshots__/
 .env
 .env.*
 !.env.example
-!.env.production
 
 # Vite
 *.timestamp-*-*.mjs
