@@ -16,8 +16,8 @@ export function redirectToLogin(): void {
 export async function exchangeCode(code: string): Promise<string> {
   const res = await fetch(`${API_BASE}/oauth/token`, {
     method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({
+    headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
+    body: new URLSearchParams({
       grant_type: 'authorization_code',
       client_id: CLIENT_ID,
       client_secret: CLIENT_SECRET,
