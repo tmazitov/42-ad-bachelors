@@ -5,6 +5,12 @@
     <link rel="icon" href="/favicon.ico">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>42 Bachelor's Tracker</title>
+    <script>
+      (function () {
+        var r = sessionStorage.getItem('spa-redirect')
+        if (r) { sessionStorage.removeItem('spa-redirect'); history.replaceState(null, '', r) }
+      })()
+    </script>
   </head>
   <body>
     <div id="app" class="w-screen h-screen"></div>

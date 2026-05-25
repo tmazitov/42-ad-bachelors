@@ -34,8 +34,20 @@ jobs:
           VITE_42_CLIENT_SECRET: ${{ secrets.VITE_42_CLIENT_SECRET }}
           VITE_42_REDIRECT_URI: ${{ secrets.VITE_42_REDIRECT_URI }}
 
-      - name: Copy index.html to 404.html for SPA routing
-        run: cp dist/index.html dist/404.html
+      - name: Create 404.html for SPA routing
+        run: |
+          cat > dist/404.html << 'EOF'
+          <!doctype html>
+          <html>
+            <head>
+              <meta charset="utf-8" />
+              <script>
+                sessionStorage.setItem('spa-redirect', location.href)
+                location.replace('/' + location.pathname.split('/')[1] + '/')
+              </script>
+            </head>
+          </html>
+          EOF
 
       - uses: actions/configure-pages@v5
 
