@@ -1,7 +1,7 @@
 <script setup lang="ts">
-import { ref, watch } from 'vue'
+import { ref, watch, computed } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
-import { Button } from 'primevue'
+import { Button, Tag } from 'primevue'
 import { useAuthStore } from '@/stores/auth'
 import type { FtUser } from '@/stores/auth'
 import Profile from '@/components/profile/Profile.vue'
@@ -13,6 +13,10 @@ const auth = useAuthStore()
 const user = ref<FtUser | null>(null)
 const loading = ref(false)
 const error = ref<string | null>(null)
+
+const avatarUrl = computed(() =>
+  user.value?.image?.versions?.medium ?? user.value?.image?.link ?? null
+)
 
 watch(
   () => route.params.login as string,
@@ -62,6 +66,110 @@ watch(
       Could not load profile: {{ error }}
     </div>
 
-    <Profile v-else-if="user" :user="user" />
+    <template v-else-if="user">
+      <div class="profile-card">
+        <div class="profile-avatar">
+          <span class="profile-avatar__initial">{{ user.login[0]?.toUpperCase() }}</span>
+          <img
+            v-if="avatarUrl"
+            :src="avatarUrl"
+            class="profile-avatar__img"
+            alt=""
+            @load="(e) => (e.target as HTMLElement).classList.add('is-loaded')"
+          />
+        </div>
+
+        <div class="profile-info">
+          <span class="profile-displayname">{{ user.displayname }}</span>
+          <span class="profile-login">{{ user.login }}</span>
+
+          <div v-if="user['alumni?'] || user['staff?'] || user.location" class="profile-chips">
+            <Tag v-if="user['alumni?']" value="Alumni" severity="secondary" icon="pi pi-graduation-cap" />
+            <Tag v-if="user['staff?']" value="Staff" severity="warn" icon="pi pi-shield" />
+            <Tag v-if="user.location" :value="user.location" severity="success" icon="pi pi-map-marker" />
+          </div>
+        </div>
+      </div>
+
+      <Profile :user="user" />
+    </template>
   </main>
 </template>
+
+<style scoped>
+.profile-card {
+  display: flex;
+  align-items: center;
+  gap: 1.25rem;
+  padding: 1rem 1.25rem;
+  border: 1px solid var(--card-border);
+  border-radius: 1.5rem;
+  background: var(--card-bg);
+  box-shadow: 0 2px 4px rgba(0, 0, 0, 0.05);
+}
+
+.profile-avatar {
+  position: relative;
+  width: 64px;
+  height: 64px;
+  border-radius: 50%;
+  overflow: hidden;
+  background: var(--p-primary-color, #3b82f6);
+  flex-shrink: 0;
+}
+
+.profile-avatar__initial {
+  position: absolute;
+  inset: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-weight: 700;
+  font-size: 1.5rem;
+  color: #fff;
+  user-select: none;
+}
+
+.profile-avatar__img {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  opacity: 0;
+  transition: opacity 0.2s ease;
+}
+
+.profile-avatar__img.is-loaded {
+  opacity: 1;
+}
+
+.profile-info {
+  display: flex;
+  flex-direction: column;
+  gap: 0.2rem;
+  min-width: 0;
+}
+
+.profile-displayname {
+  font-weight: 600;
+  font-size: 1.1rem;
+  line-height: 1.3;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.profile-login {
+  font-size: 0.875rem;
+  color: var(--p-text-muted-color, #9ca3af);
+  line-height: 1.3;
+}
+
+.profile-chips {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.375rem;
+  margin-top: 0.375rem;
+}
+</style>

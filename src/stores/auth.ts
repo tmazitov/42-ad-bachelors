@@ -5,6 +5,9 @@ export interface FtUser {
   id: number
   login: string
   displayname: string
+  'staff?': boolean
+  'alumni?': boolean
+  location: string | null
   image: {
     link: string | null
     versions: {
