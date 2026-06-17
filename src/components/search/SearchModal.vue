@@ -82,7 +82,10 @@ function selectUser(login: string) {
               </button>
             </template>
 
-            <p v-else-if="query.trim() && !loading" class="empty-hint">No students found</p>
+            <div v-else-if="query.trim() && !loading" class="empty-state">
+              <span class="empty-emoji">🔍</span>
+              <p class="empty-hint">No students found</p>
+            </div>
             <p v-else-if="!query.trim()" class="empty-hint">Type a login to search</p>
           </div>
 
@@ -287,6 +290,19 @@ function selectUser(login: string) {
   white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;
+}
+
+.empty-state {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 0.25rem;
+  padding: 0.5rem 0;
+}
+
+.empty-emoji {
+  font-size: 2rem;
+  line-height: 1;
 }
 
 .empty-hint {

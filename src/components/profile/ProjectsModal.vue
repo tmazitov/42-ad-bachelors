@@ -18,7 +18,7 @@ const props = defineProps<{
 
 const emit = defineEmits<{ 'update:visible': [value: boolean] }>()
 
-const completedIds = computed(() => new Set(props.completedProjects.map((p) => p.project.id)))
+const completedIds = computed(() => new Set(props.completedProjects.filter((p) => p['validated?']).map((p) => p.project.id)))
 
 const rows = computed(() =>
   props.projects.map((p) => ({

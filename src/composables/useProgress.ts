@@ -21,7 +21,7 @@ export function isCompleted(project: Project, ids: Set<number>): boolean {
 
 export function useProgress(completedProjects: Ref<ProjectUser[]>) {
   return computed(() => {
-    const ids = new Set(completedProjects.value.map((p) => p.project.id))
+    const ids = new Set(completedProjects.value.filter((p) => p['validated?']).map((p) => p.project.id))
 
     const genDone = generalEducationModules.projects.filter((p) => isCompleted(p, ids)).length
     const general = Math.min(genDone * (CREDITS_REQUIRED.general / 3), CREDITS_REQUIRED.general)

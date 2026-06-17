@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { ref, onMounted } from 'vue'
+import { ref, watch } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import { Button } from 'primevue'
 import { useAuthStore } from '@/stores/auth'
@@ -10,30 +10,35 @@ const route = useRoute()
 const router = useRouter()
 const auth = useAuthStore()
 
-const login = route.params.login as string
 const user = ref<FtUser | null>(null)
 const loading = ref(false)
 const error = ref<string | null>(null)
 
-onMounted(async () => {
-  if (!auth.token) {
-    router.replace('/')
-    return
-  }
-  loading.value = true
-  try {
-    const res = await fetch(
-      `${import.meta.env.VITE_42_API_BASE || ''}/v2/users/${login}`,
-      { headers: { Authorization: `Bearer ${auth.token}` } },
-    )
-    if (!res.ok) throw new Error(`${res.status}`)
-    user.value = await res.json()
-  } catch (e) {
-    error.value = e instanceof Error ? e.message : 'Failed to load profile'
-  } finally {
-    loading.value = false
-  }
-})
+watch(
+  () => route.params.login as string,
+  async (login) => {
+    if (!auth.token) {
+      router.replace('/')
+      return
+    }
+    user.value = null
+    error.value = null
+    loading.value = true
+    try {
+      const res = await fetch(
+        `${import.meta.env.VITE_42_API_BASE || ''}/v2/users/${login}`,
+        { headers: { Authorization: `Bearer ${auth.token}` } },
+      )
+      if (!res.ok) throw new Error(`${res.status}`)
+      user.value = await res.json()
+    } catch (e) {
+      error.value = e instanceof Error ? e.message : 'Failed to load profile'
+    } finally {
+      loading.value = false
+    }
+  },
+  { immediate: true },
+)
 </script>
 
 <template>
@@ -46,7 +51,7 @@ onMounted(async () => {
         severity="secondary"
         @click="router.back()"
       />
-      <span class="font-semibold text-lg">{{ login }}</span>
+      <span class="font-semibold text-lg">{{ route.params.login }}</span>
     </div>
 
     <div v-if="loading" class="flex justify-center py-12">
