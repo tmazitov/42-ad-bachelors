@@ -36,11 +36,16 @@ export default {
     })
 
     const body = await proxied.text()
-    return cors(body, proxied.status, proxied.headers.get('Content-Type') ?? 'application/json')
+    const extra = {}
+    for (const h of ['X-Total', 'X-Page', 'X-Per-Page']) {
+      const v = proxied.headers.get(h)
+      if (v) extra[h] = v
+    }
+    return cors(body, proxied.status, proxied.headers.get('Content-Type') ?? 'application/json', extra)
   },
 }
 
-function cors(body, status = 200, contentType = 'text/plain') {
+function cors(body, status = 200, contentType = 'text/plain', extra = {}) {
   return new Response(body, {
     status,
     headers: {
@@ -48,6 +53,8 @@ function cors(body, status = 200, contentType = 'text/plain') {
       'Access-Control-Allow-Origin': '*',
       'Access-Control-Allow-Methods': 'GET, POST, OPTIONS',
       'Access-Control-Allow-Headers': 'Content-Type, Authorization',
+      'Access-Control-Expose-Headers': 'X-Total, X-Page, X-Per-Page',
+      ...extra,
     },
   })
 }

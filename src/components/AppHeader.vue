@@ -1,9 +1,10 @@
 <script setup lang="ts">
-import { computed } from 'vue'
+import { ref, computed } from 'vue'
 import { Avatar, Button } from 'primevue'
 import { useThemeStore } from '@/stores/theme'
 import { useAuthStore } from '@/stores/auth'
 import { redirectToLogin } from '@/services/oauth'
+import SearchModal from '@/components/search/SearchModal.vue'
 
 const theme = useThemeStore()
 const auth = useAuthStore()
@@ -15,12 +16,14 @@ if (auth.token && !auth.user) {
 const avatarUrl = computed(() =>
   auth.user?.image?.versions?.medium ?? auth.user?.image?.link ?? null
 )
+
+const searchVisible = ref(false)
 </script>
 
 <template>
   <header class="app-header">
     <span class="flex items-center gap-2">
-      <img src="/42-bachelors.png" alt="42" class="app-header__logo rounded-full" />
+      <img src="/42-bachelors.png" alt="42" class="app-header__logo rounded-full" loading="lazy" />
       
       <span class="app-header__title">
         42 AD Bachelor's Tracker
@@ -36,11 +39,20 @@ const avatarUrl = computed(() =>
           :label="avatarUrl ? undefined : auth.user.login[0]?.toUpperCase()"
           shape="circle"
           class="cursor-pointer"
-          :pt="{ image: { style: 'object-fit: cover; width: 100%; height: 100%;' } }"
+          :pt="{ image: { style: 'object-fit: cover; width: 100%; height: 100%;', loading: 'lazy' } }"
         />
         <span class="font-medium text-md">{{ auth.user.login }}</span>
       </div>
       <span class="flex gap-2">
+        <Button
+          v-if="auth.isLoggedIn && auth.user"
+          icon="pi pi-search"
+          rounded
+          outlined
+          severity="secondary"
+          aria-label="Search students"
+          @click="searchVisible = true"
+        />
         <Button v-if="auth.isLoggedIn && auth.user"
           icon="pi pi-sign-out"
           rounded
@@ -67,6 +79,8 @@ const avatarUrl = computed(() =>
       </span>
     </div>
   </header>
+
+  <SearchModal v-model:visible="searchVisible" />
 </template>
 
 <style scoped>

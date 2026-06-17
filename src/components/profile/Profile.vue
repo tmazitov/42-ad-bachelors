@@ -1,15 +1,19 @@
 <script setup lang="ts">
-import { watch } from 'vue'
-import { Button, Tag } from 'primevue'
+import { watch, computed } from 'vue'
 import { useAuthStore } from '@/stores/auth'
+import type { FtUser } from '@/stores/auth'
 import { useProjects } from '@/composables/useProjects'
 import ProgressChart from '@/components/profile/ProgressChart.vue'
 
+const props = defineProps<{ user?: FtUser }>()
 const auth = useAuthStore()
 const { projects, loading, error, fetchProjects } = useProjects()
 
+const effectiveUser = computed(() => props.user ?? auth.user)
+const isOwnProfile = computed(() => !props.user || props.user.id === auth.user?.id)
+
 watch(
-  () => auth.user,
+  effectiveUser,
   (user) => { if (user) fetchProjects(user.id) },
   { immediate: true },
 )
@@ -31,7 +35,10 @@ function formatDate(iso: string | null): string {
 <template>
   <section class="flex flex-col gap-4">
 
-    <ProgressChart :completed-projects="projects" />
+    <ProgressChart
+      :completed-projects="projects"
+      :title="isOwnProfile ? 'Your Progress' : `${effectiveUser?.login}'s Progress`"
+    />
 
   </section>
 </template>

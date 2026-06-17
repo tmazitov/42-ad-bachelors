@@ -14,6 +14,11 @@ const router = createRouter({
       name: 'auth-callback',
       component: () => import('../views/AuthCallbackView.vue'),
     },
+    {
+      path: '/profile/:login',
+      name: 'student-profile',
+      component: () => import('../views/StudentProfileView.vue'),
+    },
   ],
 })
 

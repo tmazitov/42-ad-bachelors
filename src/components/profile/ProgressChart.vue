@@ -15,7 +15,7 @@ import ProjectsModal from '@/components/profile/ProjectsModal.vue'
 
 ChartJS.register(ArcElement, Tooltip)
 
-const props = defineProps<{ completedProjects: ProjectUser[] }>()
+const props = defineProps<{ completedProjects: ProjectUser[], title?: string }>()
 
 const projectsRef = computed(() => props.completedProjects)
 const progress = useProgress(projectsRef)
@@ -131,7 +131,7 @@ const chartOptions = {
 
 <template>
   <div class="custom-card flex-col items-start gap-4">
-    <h2 class="text-xl font-semibold ">Your Progress</h2>
+    <h2 class="text-xl font-semibold">{{ title ?? 'Your Progress' }}</h2>
 
     <div class="flex flex-col sm:flex-row items-center gap-6 w-full">
 
