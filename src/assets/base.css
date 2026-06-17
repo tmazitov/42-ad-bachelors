@@ -40,18 +40,27 @@
 }
 
 .dark {
-  --color-background: var(--vt-c-black);
-  --color-background-soft: var(--vt-c-black-soft);
-  --color-background-mute: var(--vt-c-black-mute);
+  --color-background: #0e0e12;
+  --color-background-soft: #16161c;
+  --color-background-mute: #1c1c24;
 
-  --color-border: var(--vt-c-divider-dark-2);
-  --color-border-hover: var(--vt-c-divider-dark-1);
+  --color-border: rgba(255, 255, 255, 0.08);
+  --color-border-hover: rgba(255, 255, 255, 0.14);
 
   --color-heading: var(--vt-c-text-dark-1);
   --color-text: var(--vt-c-text-dark-2);
 
-  --card-bg: var(--p-surface-card);
-  --card-border: var(--p-surface-border);
+  --card-bg: #1c1c24;
+  --card-border: #2e2e3a;
+
+  /* Lift PrimeVue's surface palette so dialogs and tables match */
+  --p-surface-900: #1c1c24;
+  --p-surface-950: #0e0e12;
+  --p-content-background: #1c1c24;
+  --p-overlay-modal-background: #22222c;
+  --p-dialog-background: #22222c;
+  --p-inputtext-background: #14141a;
+  --p-surface-border: #2e2e3a;
 }
 
 *,

@@ -19,4 +19,8 @@
     flex: 1 !important;
     min-height: 0 !important;
   }
+
+  .p-dialog-header {
+    align-items: flex-start !important;
+  }
 }

@@ -1,6 +1,6 @@
 <script setup lang="ts">
 import { computed, ref } from 'vue'
-import { Dialog, DataTable, Column, Tag } from 'primevue'
+import { Dialog, DataTable, Column, InputText } from 'primevue'
 import type { Project } from '@/models/Project'
 import type { ProjectUser } from '@/composables/useProjects'
 import { isCompleted } from '@/composables/useProgress'
@@ -32,6 +32,13 @@ const rows = computed(() =>
 
 const progressPercent = computed(() => Math.min((props.earned / props.max) * 100, 100))
 
+const search = ref('')
+
+const filteredRows = computed(() => {
+  const q = search.value.trim().toLowerCase()
+  return q ? rows.value.filter((r) => r.name.toLowerCase().includes(q) || r.code.toLowerCase().includes(q)) : rows.value
+})
+
 const sortField = ref('name')
 const sortOrder = ref<1 | -1>(1)
 </script>
@@ -48,7 +55,13 @@ const sortOrder = ref<1 | -1>(1)
       <div class="flex flex-col sm:flex-row sm:items-center w-full gap-2 sm:gap-4 pr-2">
         <span class="font-semibold text-lg leading-tight">{{ label }}</span>
 
-        <div class="flex items-center gap-2 sm:ml-auto">
+        <div class="flex items-center gap-2 sm:ml-auto flex-wrap">
+          <InputText
+            v-model="search"
+            placeholder="Search by name…"
+            size="small"
+            class="w-full sm:w-44"
+          />
           <span class="text-sm text-gray-500 dark:text-gray-400 whitespace-nowrap">
             {{ earned.toFixed(1) }} / {{ max }} {{ unit }}
           </span>
@@ -63,7 +76,7 @@ const sortOrder = ref<1 | -1>(1)
     </template>
 
     <DataTable
-      :value="rows"
+      :value="filteredRows"
       :sort-field="sortField"
       :sort-order="sortOrder"
       scrollable
@@ -82,7 +95,7 @@ const sortOrder = ref<1 | -1>(1)
       </Column>
       <Column field="done" header="Status" :sortable="true" style="width: 5.5rem">
         <template #body="{ data }">
-          <Tag v-if="data.done" value="Done" severity="success" />
+          <span v-if="data.done">✅</span>
           <span v-else-if="!data.trackable" class="text-gray-300 text-xs">N/A</span>
         </template>
       </Column>
