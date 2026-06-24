@@ -1,6 +1,7 @@
 import { ref, watch, type Ref } from 'vue'
 import { useAuthStore } from '@/stores/auth'
 import type { FtUser } from '@/stores/auth'
+import { apiFetch } from '@/services/apiFetch'
 
 const PER_PAGE = 10
 
@@ -44,9 +45,9 @@ export function useStudentSearch(query: Ref<string>) {
 
     loading.value = true
     try {
-      const res = await fetch(
+      const res = await apiFetch(
         `${import.meta.env.VITE_42_API_BASE || ''}/v2/users?search[login]=${encodeURIComponent(q)}&per_page=${PER_PAGE}&page=${p}`,
-        { headers: { Authorization: `Bearer ${auth.token}` }, signal },
+        { signal },
       )
       if (!res.ok) throw new Error(`${res.status}`)
 

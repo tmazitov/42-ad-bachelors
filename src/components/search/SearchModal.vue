@@ -3,6 +3,35 @@ import { watch, nextTick, ref, computed } from 'vue'
 import { useRouter } from 'vue-router'
 import { useStudentSearch } from '@/composables/useStudentSearch'
 import { useProjectSearch } from '@/composables/useProjectSearch'
+import {
+  generalEducationModules,
+  standardModules,
+  streamModules,
+  electiveModules,
+  allGroups,
+} from '@/utils/data'
+import type { ProjectGroup } from '@/models/ProjectGroup'
+
+const GROUP_COLORS = new Map<ProjectGroup, string>([
+  [generalEducationModules, '#22c55e'],
+  [standardModules, '#3b82f6'],
+  [streamModules, '#8b5cf6'],
+  [electiveModules, '#f97316'],
+])
+
+const bachelorMap = new Map<number, { code: string; color: string }>()
+for (const group of allGroups) {
+  const color = GROUP_COLORS.get(group) ?? '#6b7280'
+  for (const project of group.projects) {
+    if (project.id === null) continue
+    const ids = Array.isArray(project.id) ? project.id : [project.id]
+    for (const id of ids) bachelorMap.set(id, { code: project.code, color })
+  }
+}
+
+function withAlpha(hex: string, alpha: number): string {
+  return hex + Math.round(alpha * 255).toString(16).padStart(2, '0')
+}
 
 const props = defineProps<{ visible: boolean }>()
 const emit = defineEmits<{ 'update:visible': [value: boolean] }>()
@@ -142,6 +171,15 @@ function selectProject(slug: string) {
                   <span class="result-primary">{{ project.name }}</span>
                   <span class="result-secondary">{{ project.slug }}</span>
                 </div>
+                <span
+                  v-if="bachelorMap.has(project.id)"
+                  class="project-badge"
+                  :style="{
+                    background: withAlpha(bachelorMap.get(project.id)!.color, 0.15),
+                    color: bachelorMap.get(project.id)!.color,
+                  }"
+                >{{ bachelorMap.get(project.id)!.code }}</span>
+                <span v-else class="project-badge project-badge--out">External</span>
                 <i class="pi pi-external-link result-external" />
               </button>
             </template>
@@ -379,7 +417,7 @@ function selectProject(slug: string) {
   width: 2rem;
   height: 2rem;
   border-radius: 0.5rem;
-  background: var(--p-surface-900, rgba(0, 0, 0, 0.08));
+  background: var(--color-background-mute);
   display: flex;
   align-items: center;
   justify-content: center;
@@ -390,7 +428,6 @@ function selectProject(slug: string) {
 }
 
 .result-external {
-  margin-left: auto;
   font-size: 0.7rem;
   color: var(--p-text-muted-color, #9ca3af);
   opacity: 0;
@@ -400,6 +437,25 @@ function selectProject(slug: string) {
 
 .result-item:hover .result-external {
   opacity: 1;
+}
+
+.project-badge {
+  margin-left: auto;
+  flex-shrink: 0;
+  font-size: 0.7rem;
+  font-weight: 600;
+  padding: 0.15rem 0.5rem;
+  border-radius: 999px;
+  letter-spacing: 0.02em;
+}
+
+.project-badge--out {
+  background: rgba(0, 0, 0, 0.06);
+  color: var(--p-text-muted-color, #9ca3af);
+}
+
+.dark .project-badge--out {
+  background: rgba(255, 255, 255, 0.07);
 }
 
 /* ── Result text ─────────────────────── */

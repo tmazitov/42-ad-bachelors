@@ -1,6 +1,7 @@
 <script setup lang="ts">
 import { ref, onMounted } from 'vue'
 import { useAuthStore } from '@/stores/auth'
+import { apiFetch } from '@/services/apiFetch'
 
 interface ApiProject {
   id: number
@@ -14,9 +15,8 @@ const loading = ref(false)
 const error = ref<string | null>(null)
 
 async function fetchPage(page: number): Promise<ApiProject[]> {
-  const res = await fetch(
+  const res = await apiFetch(
     `${import.meta.env.VITE_42_API_BASE || ''}/v2/cursus/21/projects?per_page=100&page=${page}&sort=name`,
-    { headers: { Authorization: `Bearer ${auth.token}` } },
   )
   if (!res.ok) throw new Error(`${res.status}`)
   return res.json()

@@ -4,6 +4,7 @@ import { useRoute, useRouter } from 'vue-router'
 import { Button, Tag } from 'primevue'
 import { useAuthStore } from '@/stores/auth'
 import type { FtUser } from '@/stores/auth'
+import { apiFetch } from '@/services/apiFetch'
 import Profile from '@/components/profile/Profile.vue'
 
 const route = useRoute()
@@ -29,9 +30,8 @@ watch(
     error.value = null
     loading.value = true
     try {
-      const res = await fetch(
+      const res = await apiFetch(
         `${import.meta.env.VITE_42_API_BASE || ''}/v2/users/${login}`,
-        { headers: { Authorization: `Bearer ${auth.token}` } },
       )
       if (!res.ok) throw new Error(`${res.status}`)
       user.value = await res.json()

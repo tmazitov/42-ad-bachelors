@@ -1,5 +1,6 @@
 import { ref } from 'vue'
 import { useAuthStore } from '@/stores/auth'
+import { apiFetch } from '@/services/apiFetch'
 
 export interface ProjectUser {
   id: number
@@ -26,9 +27,8 @@ export function useProjects() {
     loading.value = true
     error.value = null
     try {
-      const res = await fetch(
+      const res = await apiFetch(
         `${import.meta.env.VITE_42_API_BASE || ''}/v2/users/${userId}/projects_users?filter[status]=finished&sort=-marked_at&per_page=100`,
-        { headers: { Authorization: `Bearer ${auth.token}` } },
       )
       if (!res.ok) throw new Error(`${res.status}`)
       projects.value = await res.json()

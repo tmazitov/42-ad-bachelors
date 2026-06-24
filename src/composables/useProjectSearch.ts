@@ -1,15 +1,16 @@
 import { ref, watch, type Ref } from 'vue'
 import { useAuthStore } from '@/stores/auth'
+import { apiFetch } from '@/services/apiFetch'
 
 export interface FtProject {
   id: number
   name: string
   slug: string
-  description: string | null
-  status: string
+  exam: boolean
 }
 
-const PER_PAGE = 5
+const FETCH_SIZE = 15
+const DISPLAY_SIZE = 5
 
 export function useProjectSearch(query: Ref<string>) {
   const auth = useAuthStore()
@@ -46,13 +47,13 @@ export function useProjectSearch(query: Ref<string>) {
 
     loading.value = true
     try {
-      const res = await fetch(
-        `${import.meta.env.VITE_42_API_BASE || ''}/v2/projects?search[name]=${encodeURIComponent(q)}&per_page=${PER_PAGE}`,
-        { headers: { Authorization: `Bearer ${auth.token}` }, signal },
+      const res = await apiFetch(
+        `${import.meta.env.VITE_42_API_BASE || ''}/v2/cursus/21/projects?search[name]=${encodeURIComponent(q)}&per_page=${FETCH_SIZE}`,
+        { signal },
       )
       if (!res.ok) throw new Error(`${res.status}`)
       const data: FtProject[] = await res.json()
-      results.value = data.filter(p => p.status !== 'deprecated')
+      results.value = data.filter(p => !p.exam).slice(0, DISPLAY_SIZE)
     } catch {
       if (!signal.aborted) results.value = []
     } finally {
