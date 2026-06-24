@@ -1,21 +1,25 @@
 import { ref, watch, type Ref } from 'vue'
 import { useAuthStore } from '@/stores/auth'
-import type { FtUser } from '@/stores/auth'
 
-const PER_PAGE = 10
+export interface FtProject {
+  id: number
+  name: string
+  slug: string
+  description: string | null
+  status: string
+}
 
-export function useStudentSearch(query: Ref<string>) {
+const PER_PAGE = 5
+
+export function useProjectSearch(query: Ref<string>) {
   const auth = useAuthStore()
-  const results = ref<FtUser[]>([])
+  const results = ref<FtProject[]>([])
   const loading = ref(false)
-  const page = ref(1)
-  const totalPages = ref(0)
   let debounceTimer: ReturnType<typeof setTimeout> | null = null
   let abortController: AbortController | null = null
 
   watch(query, (val) => {
     if (debounceTimer) clearTimeout(debounceTimer)
-
     if (abortController) {
       abortController.abort()
       abortController = null
@@ -24,18 +28,16 @@ export function useStudentSearch(query: Ref<string>) {
     const trimmed = val.trim()
     if (!trimmed) {
       results.value = []
-      page.value = 1
-      totalPages.value = 0
       loading.value = false
       return
     }
 
     debounceTimer = setTimeout(() => {
-      if (trimmed === query.value.trim()) search(trimmed, 1)
+      if (trimmed === query.value.trim()) search(trimmed)
     }, 500)
   })
 
-  async function search(q: string, p: number) {
+  async function search(q: string) {
     if (!auth.token) return
 
     if (abortController) abortController.abort()
@@ -45,32 +47,17 @@ export function useStudentSearch(query: Ref<string>) {
     loading.value = true
     try {
       const res = await fetch(
-        `${import.meta.env.VITE_42_API_BASE || ''}/v2/users?search[login]=${encodeURIComponent(q)}&per_page=${PER_PAGE}&page=${p}`,
+        `${import.meta.env.VITE_42_API_BASE || ''}/v2/projects?search[name]=${encodeURIComponent(q)}&per_page=${PER_PAGE}`,
         { headers: { Authorization: `Bearer ${auth.token}` }, signal },
       )
       if (!res.ok) throw new Error(`${res.status}`)
-
-      const data: FtUser[] = await res.json()
-      results.value = data
-      page.value = p
-
-      const total = parseInt(res.headers.get('X-Total') ?? '0', 10)
-      totalPages.value = total > 0
-        ? Math.ceil(total / PER_PAGE)
-        : (data.length === PER_PAGE ? p + 1 : p)
+      const data: FtProject[] = await res.json()
+      results.value = data.filter(p => p.status !== 'deprecated')
     } catch {
-      if (signal.aborted) return
-      results.value = []
-      totalPages.value = 0
+      if (!signal.aborted) results.value = []
     } finally {
       if (!signal.aborted) loading.value = false
     }
-  }
-
-  function goToPage(p: number) {
-    const trimmed = query.value.trim()
-    if (!trimmed || loading.value) return
-    search(trimmed, p)
   }
 
   function reset() {
@@ -80,10 +67,8 @@ export function useStudentSearch(query: Ref<string>) {
       abortController = null
     }
     results.value = []
-    page.value = 1
-    totalPages.value = 0
     loading.value = false
   }
 
-  return { results, loading, page, totalPages, goToPage, reset }
+  return { results, loading, reset }
 }
