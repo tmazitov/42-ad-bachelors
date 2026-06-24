@@ -4,6 +4,13 @@ const REDIRECT_URI = import.meta.env.VITE_42_REDIRECT_URI as string
 const API_BASE = (import.meta.env.VITE_42_API_BASE as string) || ''
 const TOKEN_PROXY = import.meta.env.VITE_42_TOKEN_PROXY as string | undefined
 
+export interface TokenData {
+  access_token: string
+  refresh_token: string
+  expires_in: number
+  created_at: number
+}
+
 export function redirectToLogin(): void {
   const params = new URLSearchParams({
     client_id: CLIENT_ID,
@@ -14,7 +21,7 @@ export function redirectToLogin(): void {
   window.location.href = `https://api.intra.42.fr/oauth/authorize?${params}`
 }
 
-export async function exchangeCode(code: string): Promise<string> {
+export async function exchangeCode(code: string): Promise<TokenData> {
   let res: Response
 
   if (TOKEN_PROXY) {
@@ -40,7 +47,32 @@ export async function exchangeCode(code: string): Promise<string> {
   }
 
   if (!res.ok) throw new Error(`Token exchange failed: ${res.status}`)
+  return res.json()
+}
 
-  const data = await res.json()
-  return data.access_token as string
+export async function refreshAccessToken(refreshToken: string): Promise<TokenData> {
+  let res: Response
+
+  if (TOKEN_PROXY) {
+    const refreshUrl = TOKEN_PROXY.replace('/oauth/token', '/oauth/refresh')
+    res = await fetch(refreshUrl, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ refresh_token: refreshToken }),
+    })
+  } else {
+    res = await fetch(`${API_BASE}/oauth/token`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
+      body: new URLSearchParams({
+        grant_type: 'refresh_token',
+        client_id: CLIENT_ID,
+        client_secret: CLIENT_SECRET,
+        refresh_token: refreshToken,
+      }),
+    })
+  }
+
+  if (!res.ok) throw new Error(`Token refresh failed: ${res.status}`)
+  return res.json()
 }

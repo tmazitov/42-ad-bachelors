@@ -17,8 +17,8 @@ onMounted(async () => {
   }
 
   try {
-    const token = await exchangeCode(code)
-    auth.setToken(token)
+    const tokenData = await exchangeCode(code)
+    auth.setTokens(tokenData)
     await auth.fetchUser()
   } catch (e) {
     console.error('OAuth callback failed:', e)

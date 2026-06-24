@@ -8,6 +8,25 @@ export default {
       return cors(null, 204)
     }
 
+    // Token refresh — inject server-side secrets
+    if (url.pathname === '/oauth/refresh' && request.method === 'POST') {
+      let body
+      try { body = await request.json() } catch { return cors('Invalid JSON', 400) }
+
+      const res = await fetch(`${API}/oauth/token`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
+        body: new URLSearchParams({
+          grant_type: 'refresh_token',
+          client_id: env.CLIENT_ID,
+          client_secret: env.CLIENT_SECRET,
+          refresh_token: body.refresh_token,
+        }),
+      })
+
+      return cors(await res.text(), res.status, 'application/json')
+    }
+
     // Token exchange — inject server-side secrets
     if (url.pathname === '/oauth/token' && request.method === 'POST') {
       let body
