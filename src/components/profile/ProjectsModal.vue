@@ -20,14 +20,31 @@ const emit = defineEmits<{ 'update:visible': [value: boolean] }>()
 
 const completedIds = computed(() => new Set(props.completedProjects.filter((p) => p['validated?']).map((p) => p.project.id)))
 
+const slugMap = computed(() => {
+  const map = new Map<number, string>()
+  for (const pu of props.completedProjects) {
+    if (pu.project?.slug) map.set(pu.project.id, pu.project.slug)
+  }
+  return map
+})
+
 const rows = computed(() =>
-  props.projects.map((p) => ({
-    code: p.code,
-    name: p.name,
-    credit: p.credit,
-    done: isCompleted(p, completedIds.value),
-    trackable: p.id !== null,
-  })),
+  props.projects.map((p) => {
+    const ids = Array.isArray(p.id) ? p.id : p.id !== null ? [p.id] : []
+    const slug = ids.reduce<string | null>((found, id) => found ?? slugMap.value.get(id) ?? null, null)
+    const primaryId = ids[0] ?? null
+    const url = primaryId !== null
+      ? `https://projects.intra.42.fr/projects/${slug ?? primaryId}`
+      : null
+    return {
+      code: p.code,
+      name: p.name,
+      credit: p.credit,
+      done: isCompleted(p, completedIds.value),
+      trackable: p.id !== null,
+      url,
+    }
+  }),
 )
 
 const progressPercent = computed(() => Math.min((props.earned / props.max) * 100, 100))
@@ -85,7 +102,18 @@ const sortOrder = ref<1 | -1>(1)
       @sort="(e) => { sortField = e.sortField as string; sortOrder = e.sortOrder as 1 | -1 }"
     >
       <Column field="code" header="Code" class="hidden sm:table-cell" style="width: 7.5rem; font-family: monospace" />
-      <Column field="name" header="Name" :sortable="true" style="min-width: 8rem" />
+      <Column field="name" header="Name" :sortable="true" style="min-width: 8rem">
+        <template #body="{ data }">
+          <a
+            v-if="data.url"
+            :href="data.url"
+            target="_blank"
+            rel="noopener noreferrer"
+            class="project-link"
+          >{{ data.name }}</a>
+          <span v-else>{{ data.name }}</span>
+        </template>
+      </Column>
       <Column field="credit" header="Cr." :sortable="true" style="width: 4.5rem">
         <template #body="{ data }">
           <span :class="data.credit > 0 ? 'font-medium' : 'text-gray-300'">
@@ -102,3 +130,15 @@ const sortOrder = ref<1 | -1>(1)
     </DataTable>
   </Dialog>
 </template>
+
+<style scoped>
+.project-link {
+  color: inherit;
+  text-decoration: none;
+}
+
+.project-link:hover {
+  text-decoration: underline;
+  opacity: 0.8;
+}
+</style>
