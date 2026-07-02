@@ -1,11 +1,13 @@
 <script setup lang="ts">
 import { ref, computed } from 'vue'
+import { useRouter } from 'vue-router'
 import { Avatar, Button } from 'primevue'
 import { useThemeStore } from '@/stores/theme'
 import { useAuthStore } from '@/stores/auth'
 import { redirectToLogin } from '@/services/oauth'
 import SearchModal from '@/components/search/SearchModal.vue'
 
+const router = useRouter()
 const theme = useThemeStore()
 const auth = useAuthStore()
 
@@ -22,13 +24,10 @@ const searchVisible = ref(false)
 
 <template>
   <header class="app-header">
-    <span class="flex items-center gap-2">
+    <button class="app-header__home flex items-center gap-2" @click="router.push('/')">
       <img src="/42-bachelors.png" alt="42" class="app-header__logo rounded-full" loading="lazy" />
-      
-      <span class="app-header__title">
-        42 AD Bachelor's Tracker
-      </span>
-    </span>
+      <span class="app-header__title">42 AD Bachelor's Tracker</span>
+    </button>
 
 
     <div class="app-header__buttons flex items-center gap-4">
@@ -92,6 +91,14 @@ const searchVisible = ref(false)
   border: 1px solid var(--card-border);
   border-radius: 1.5rem;
   background: var(--card-bg);
+}
+
+.app-header__home {
+  background: none;
+  border: none;
+  cursor: pointer;
+  color: inherit;
+  padding: 0;
 }
 
 .app-header__logo {
