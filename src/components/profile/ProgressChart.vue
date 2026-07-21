@@ -20,7 +20,7 @@ const props = defineProps<{ completedProjects: ProjectUser[], title?: string }>(
 const projectsRef = computed(() => props.completedProjects)
 const progress = useProgress(projectsRef)
 
-type ProgressKey = 'general' | 'standard' | 'stream' | 'elective' | 'capstone' | 'internship'
+type ProgressKey = 'general' | 'standard' | 'stream' | 'elective'
 
 interface CategoryDef {
   key: ProgressKey
@@ -46,7 +46,7 @@ const CATEGORIES: CategoryDef[] = [
     color: '#3b82f6',
     max: CREDITS_REQUIRED.standard,
     unit: 'credits',
-    projects: standardModules.projects.filter((p) => p.code !== 'CCP 161' && p.code !== 'BAI 499'),
+    projects: standardModules.projects,
   },
   {
     key: 'stream',
