@@ -1,3 +1,13 @@
 name = "42-ad-bachelors-auth"
 main = "worker/index.js"
 compatibility_date = "2024-01-01"
+
+[triggers]
+crons = ["0 * * * *"]
+
+[[kv_namespaces]]
+binding = "LEADERBOARD_KV"
+id = "6b2ea9aeff524bd680ae8b8b10b7587a"
+
+[vars]
+CAMPUS_ID = "43"

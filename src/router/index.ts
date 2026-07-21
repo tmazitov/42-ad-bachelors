@@ -19,6 +19,11 @@ const router = createRouter({
       name: 'student-profile',
       component: () => import('../views/StudentProfileView.vue'),
     },
+    {
+      path: '/leaderboard',
+      name: 'leaderboard',
+      component: () => import('../views/LeaderboardView.vue'),
+    },
   ],
 })
 

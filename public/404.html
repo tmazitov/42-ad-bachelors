@@ -1,0 +1,15 @@
+<!DOCTYPE html>
+<html lang="">
+<head>
+  <meta charset="UTF-8">
+  <title>42 Bachelor's Tracker</title>
+  <script>
+    // Store the full path so index.html can restore it after redirect.
+    // GitHub Pages project sites have a repo-name prefix, e.g. /42-ad-bachelors/.
+    var segs = window.location.pathname.split('/')
+    var base = segs.length > 1 ? '/' + segs[1] + '/' : '/'
+    sessionStorage.setItem('spa-redirect', window.location.pathname + window.location.search + window.location.hash)
+    window.location.replace(window.location.origin + base)
+  </script>
+</head>
+</html>

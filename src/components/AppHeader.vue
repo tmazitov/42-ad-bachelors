@@ -45,6 +45,15 @@ const searchVisible = ref(false)
       <span class="flex gap-2">
         <Button
           v-if="auth.isLoggedIn && auth.user"
+          icon="pi pi-trophy"
+          rounded
+          outlined
+          severity="secondary"
+          aria-label="Leaderboard"
+          @click="router.push('/leaderboard')"
+        />
+        <Button
+          v-if="auth.isLoggedIn && auth.user"
           icon="pi pi-search"
           rounded
           outlined

@@ -42,3 +42,6 @@ __screenshots__/
 
 # Vite
 *.timestamp-*-*.mjs
+
+# Wrangler local state
+.wrangler/
