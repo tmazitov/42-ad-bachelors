@@ -8,11 +8,20 @@ import (
 	"io"
 	"net/http"
 	"net/url"
+	"strconv"
 	"strings"
 	"time"
 
+	"golang.org/x/time/rate"
+
 	"github.com/tmazitov/42-ad-bachelors/backend/internal/application/auth"
+	"github.com/tmazitov/42-ad-bachelors/backend/internal/application/progress"
+	"github.com/tmazitov/42-ad-bachelors/backend/internal/domain/curriculum"
+	"github.com/tmazitov/42-ad-bachelors/backend/internal/domain/student"
 )
+
+// 42 allows 2 requests per second per application by default.
+const requestsPerSecond = 2
 
 // Config holds the 42 OAuth application credentials.
 type Config struct {
@@ -22,18 +31,27 @@ type Config struct {
 	RedirectURI  string
 }
 
-// Client talks to the 42 API. It implements auth.Provider.
+// Client talks to the 42 API. It implements auth.Provider and
+// progress.ProjectSource. All requests share one rate limiter.
 type Client struct {
-	cfg  Config
-	http *http.Client
+	cfg     Config
+	http    *http.Client
+	limiter *rate.Limiter
 }
 
 func NewClient(cfg Config) *Client {
 	cfg.BaseURL = strings.TrimRight(cfg.BaseURL, "/")
-	return &Client{cfg: cfg, http: &http.Client{Timeout: 15 * time.Second}}
+	return &Client{
+		cfg:     cfg,
+		http:    &http.Client{Timeout: 15 * time.Second},
+		limiter: rate.NewLimiter(requestsPerSecond, requestsPerSecond),
+	}
 }
 
-var _ auth.Provider = (*Client)(nil)
+var (
+	_ auth.Provider          = (*Client)(nil)
+	_ progress.ProjectSource = (*Client)(nil)
+)
 
 type tokenResponse struct {
 	AccessToken  string `json:"access_token"`
@@ -70,7 +88,7 @@ func (c *Client) requestToken(ctx context.Context, form url.Values) (auth.Token,
 	req.Header.Set("Content-Type", "application/x-www-form-urlencoded")
 
 	var body tokenResponse
-	if err := c.do(req, &body); err != nil {
+	if _, err := c.do(req, &body); err != nil {
 		return auth.Token{}, fmt.Errorf("42 token request: %w", err)
 	}
 	return auth.Token(body), nil
@@ -96,7 +114,7 @@ func (c *Client) Profile(ctx context.Context, accessToken string) (auth.Profile,
 	req.Header.Set("Authorization", "Bearer "+accessToken)
 
 	var me meResponse
-	if err := c.do(req, &me); err != nil {
+	if _, err := c.do(req, &me); err != nil {
 		return auth.Profile{}, fmt.Errorf("42 /v2/me: %w", err)
 	}
 
@@ -107,19 +125,78 @@ func (c *Client) Profile(ctx context.Context, accessToken string) (auth.Profile,
 	return auth.Profile{ID: me.ID, Login: me.Login, DisplayName: me.DisplayName, ImageURL: image}, nil
 }
 
-// do sends req and decodes a 2xx JSON response into out. An OAuth
-// "invalid_grant" error is returned as auth.ErrInvalidGrant.
-func (c *Client) do(req *http.Request, out any) error {
+const (
+	projectsPerPage = 100
+	maxProjectPages = 10
+)
+
+type projectUserResponse struct {
+	FinalMark *int       `json:"final_mark"`
+	Validated *bool      `json:"validated?"`
+	MarkedAt  *time.Time `json:"marked_at"`
+	Project   struct {
+		ID int `json:"id"`
+	} `json:"project"`
+}
+
+// CompletedProjects returns the user's validated finished projects, following
+// pagination.
+func (c *Client) CompletedProjects(ctx context.Context, accessToken string, id student.ID) ([]student.CompletedProject, error) {
+	var out []student.CompletedProject
+	for page := 1; page <= maxProjectPages; page++ {
+		u := fmt.Sprintf("%s/v2/users/%d/projects_users?filter[status]=finished&per_page=%d&page=%d",
+			c.cfg.BaseURL, id, projectsPerPage, page)
+		req, err := http.NewRequestWithContext(ctx, http.MethodGet, u, nil)
+		if err != nil {
+			return nil, err
+		}
+		req.Header.Set("Authorization", "Bearer "+accessToken)
+
+		var batch []projectUserResponse
+		header, err := c.do(req, &batch)
+		if err != nil {
+			return nil, fmt.Errorf("42 projects_users page %d: %w", page, err)
+		}
+
+		for _, pu := range batch {
+			if pu.Validated == nil || !*pu.Validated {
+				continue
+			}
+			cp := student.CompletedProject{ProjectID: curriculum.ProjectID(pu.Project.ID)}
+			if pu.FinalMark != nil {
+				cp.FinalMark = *pu.FinalMark
+			}
+			if pu.MarkedAt != nil {
+				cp.MarkedAt = *pu.MarkedAt
+			}
+			out = append(out, cp)
+		}
+
+		total, _ := strconv.Atoi(header.Get("X-Total"))
+		if len(batch) < projectsPerPage || (total > 0 && page*projectsPerPage >= total) {
+			return out, nil
+		}
+	}
+	return nil, fmt.Errorf("42 projects_users: more than %d pages", maxProjectPages)
+}
+
+// do waits for the rate limiter, sends req and decodes a 2xx JSON response
+// into out. An OAuth "invalid_grant" error is returned as auth.ErrInvalidGrant.
+func (c *Client) do(req *http.Request, out any) (http.Header, error) {
+	if err := c.limiter.Wait(req.Context()); err != nil {
+		return nil, err
+	}
+
 	req.Header.Set("Accept", "application/json")
 	res, err := c.http.Do(req)
 	if err != nil {
-		return err
+		return nil, err
 	}
 	defer res.Body.Close()
 
-	body, err := io.ReadAll(io.LimitReader(res.Body, 1<<20))
+	body, err := io.ReadAll(io.LimitReader(res.Body, 8<<20))
 	if err != nil {
-		return err
+		return nil, err
 	}
 
 	if res.StatusCode < 200 || res.StatusCode > 299 {
@@ -129,9 +206,9 @@ func (c *Client) do(req *http.Request, out any) error {
 		}
 		_ = json.Unmarshal(body, &oauthErr)
 		if oauthErr.Error == "invalid_grant" {
-			return auth.ErrInvalidGrant
+			return nil, auth.ErrInvalidGrant
 		}
-		return fmt.Errorf("status %d: %s %s", res.StatusCode, oauthErr.Error, oauthErr.Description)
+		return nil, fmt.Errorf("status %d: %s %s", res.StatusCode, oauthErr.Error, oauthErr.Description)
 	}
-	return json.Unmarshal(body, out)
+	return res.Header, json.Unmarshal(body, out)
 }

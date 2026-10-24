@@ -156,7 +156,7 @@ See `frontend/.env.example`. Vite reads `.env*` files from `frontend/`.
 | `VITE_42_REDIRECT_URI` | frontend | `oauth.ts` | must match the 42 app's redirect URI, e.g. `http://localhost:5173/auth/callback` |
 | `VITE_42_API_BASE` | frontend | all API calls | empty in dev (Vite proxy handles `/v2` and `/oauth`). In prod it is the Worker URL |
 | `VITE_42_TOKEN_PROXY` | frontend | `oauth.ts` | full URL ending in `/oauth/token`. If set, exchange and refresh go through it |
-| `VITE_WORKER_URL` | frontend | `LeaderboardView.vue` | optional, falls back to `VITE_42_API_BASE` |
+| `VITE_BACKEND_URL` | frontend | `LeaderboardView.vue` | Go backend base URL, e.g. `http://localhost:8080` |
 | `GITHUB_ACTIONS`, `GITHUB_REPOSITORY` | build | `vite.config.ts` | sets `base` to `/<repo>/` for GitHub Pages |
 | `CLIENT_ID`, `CLIENT_SECRET` | Worker secrets | `worker/index.js` | |
 | `CAMPUS_ID` | Worker var | unused | |

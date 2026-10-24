@@ -3,11 +3,14 @@ package ft
 import (
 	"context"
 	"errors"
+	"fmt"
 	"net/http"
 	"net/http/httptest"
 	"testing"
+	"time"
 
 	"github.com/tmazitov/42-ad-bachelors/backend/internal/application/auth"
+	"github.com/tmazitov/42-ad-bachelors/backend/internal/domain/student"
 )
 
 func newTestClient(t *testing.T, h http.HandlerFunc) *Client {
@@ -80,5 +83,47 @@ func TestProfileFallsBackToImageLink(t *testing.T) {
 	}
 	if p != (auth.Profile{ID: 7, Login: "jdoe", DisplayName: "John", ImageURL: "http://img"}) {
 		t.Errorf("profile = %+v", p)
+	}
+}
+
+func TestCompletedProjectsPaginatesAndFiltersValidated(t *testing.T) {
+	var pages []string
+	c := newTestClient(t, func(w http.ResponseWriter, r *http.Request) {
+		if r.URL.Path != "/v2/users/7/projects_users" || r.URL.Query().Get("filter[status]") != "finished" {
+			t.Errorf("unexpected request %s", r.URL)
+		}
+		page := r.URL.Query().Get("page")
+		pages = append(pages, page)
+		w.Header().Set("X-Total", "101")
+		if page == "1" {
+			// 100 items: 99 unvalidated + 1 validated
+			w.Write([]byte("["))
+			for i := range 99 {
+				fmt.Fprintf(w, `{"validated?":false,"project":{"id":%d}},`, 5000+i)
+			}
+			w.Write([]byte(`{"validated?":true,"final_mark":125,"marked_at":"2024-03-01T10:00:00.000Z","project":{"id":1314}}]`))
+			return
+		}
+		w.Write([]byte(`[{"validated?":true,"final_mark":null,"marked_at":null,"project":{"id":1327}},{"validated?":null,"project":{"id":1}}]`))
+	})
+
+	got, err := c.CompletedProjects(context.Background(), "tok", 7)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(pages) != 2 {
+		t.Errorf("requested pages %v, want [1 2]", pages)
+	}
+	want := []student.CompletedProject{
+		{ProjectID: 1314, FinalMark: 125, MarkedAt: time.Date(2024, 3, 1, 10, 0, 0, 0, time.UTC)},
+		{ProjectID: 1327},
+	}
+	if len(got) != len(want) {
+		t.Fatalf("got %+v, want %+v", got, want)
+	}
+	for i := range want {
+		if got[i].ProjectID != want[i].ProjectID || got[i].FinalMark != want[i].FinalMark || !got[i].MarkedAt.Equal(want[i].MarkedAt) {
+			t.Errorf("#%d = %+v, want %+v", i, got[i], want[i])
+		}
 	}
 }

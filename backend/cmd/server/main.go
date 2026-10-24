@@ -12,6 +12,7 @@ import (
 	"github.com/gofiber/fiber/v3"
 
 	"github.com/tmazitov/42-ad-bachelors/backend/internal/application/auth"
+	"github.com/tmazitov/42-ad-bachelors/backend/internal/application/progress"
 	"github.com/tmazitov/42-ad-bachelors/backend/internal/config"
 	"github.com/tmazitov/42-ad-bachelors/backend/internal/domain/curriculum"
 	"github.com/tmazitov/42-ad-bachelors/backend/internal/infrastructure/ft"
@@ -55,11 +56,14 @@ func run() error {
 		RedirectURI:  cfg.FT.RedirectURI,
 	})
 	students := sqlite.NewStudentRepository(db)
+	bachelor := curriculum.ADBachelor()
+	progressSvc := progress.NewService(ftClient, students, bachelor)
 
 	app := httpapi.NewServer(cfg, httpapi.Deps{
 		DB:         db,
-		Curriculum: curriculum.ADBachelor(),
-		Auth:       auth.NewService(ftClient, students),
+		Curriculum: bachelor,
+		Auth:       auth.NewService(ftClient, students, progressSvc, log),
+		Progress:   progressSvc,
 		Log:        log,
 	})
 
