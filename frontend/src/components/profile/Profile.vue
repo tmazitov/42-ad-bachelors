@@ -11,6 +11,8 @@ const { projects, loading, error, fetchProjects } = useProjects()
 
 const effectiveUser = computed(() => props.user ?? auth.user)
 const isOwnProfile = computed(() => !props.user || props.user.id === auth.user?.id)
+// Also loading while the signed-in user itself is still being fetched.
+const isLoading = computed(() => loading.value || !effectiveUser.value)
 
 watch(
   effectiveUser,
@@ -37,6 +39,7 @@ function formatDate(iso: string | null): string {
 
     <ProgressChart
       :completed-projects="projects"
+      :loading="isLoading"
       :title="isOwnProfile ? 'Your Progress' : `${effectiveUser?.login}'s Progress`"
     />
 

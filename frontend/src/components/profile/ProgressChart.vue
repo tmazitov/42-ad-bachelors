@@ -15,7 +15,7 @@ import ProjectsModal from '@/components/profile/ProjectsModal.vue'
 
 ChartJS.register(ArcElement, Tooltip)
 
-const props = defineProps<{ completedProjects: ProjectUser[], title?: string }>()
+const props = defineProps<{ completedProjects: ProjectUser[], title?: string, loading?: boolean }>()
 
 const projectsRef = computed(() => props.completedProjects)
 const progress = useProgress(projectsRef)
@@ -70,6 +70,7 @@ const selectedCat = ref<CategoryDef | null>(null)
 const modalVisible = ref(false)
 
 function openModal(cat: CategoryDef) {
+  if (props.loading) return
   selectedCat.value = cat
   modalVisible.value = true
 }
@@ -133,7 +134,24 @@ const chartOptions = {
   <div class="custom-card flex-col items-start gap-4">
     <h2 class="text-xl font-semibold">{{ title ?? 'Your Progress' }}</h2>
 
-    <div class="flex flex-col sm:flex-row items-center gap-6 w-full">
+    <!-- Loading -->
+    <div v-if="loading" class="flex flex-col sm:flex-row items-center gap-6 w-full" aria-busy="true">
+      <div class="relative w-44 h-44 shrink-0 flex items-center justify-center">
+        <div class="chart-loader" />
+        <span class="absolute text-xs text-gray-400 dark:text-gray-500">Loading…</span>
+      </div>
+      <div class="flex flex-col gap-2 w-full text-sm">
+        <div v-for="cat in CATEGORIES" :key="cat.key" class="flex items-center gap-2 px-2 py-1 -mx-2">
+          <span class="w-2.5 h-2.5 rounded-full shrink-0 opacity-40" :style="{ background: cat.color }" />
+          <span class="w-36 text-gray-400 dark:text-gray-500 shrink-0">{{ cat.label }}</span>
+          <div class="flex-1 h-1.5 rounded-full skeleton" />
+          <span class="w-16 flex justify-end shrink-0"><span class="h-3 w-10 rounded skeleton" /></span>
+        </div>
+      </div>
+    </div>
+
+
+    <div v-else class="flex flex-col sm:flex-row items-center gap-6 w-full">
 
       <!-- Doughnut -->
       <div class="relative w-44 h-44 shrink-0">
@@ -197,6 +215,28 @@ const chartOptions = {
   border-radius: 1.5rem;
   background: var(--card-bg);
   box-shadow: 0 2px 4px rgba(0, 0, 0, 0.05);
+}
+
+.chart-loader {
+  width: 100%;
+  height: 100%;
+  border-radius: 50%;
+  border: 12px solid var(--card-border);
+  border-top-color: var(--p-primary-color, #10b981);
+  animation: chart-spin 0.9s linear infinite;
+}
+
+@keyframes chart-spin {
+  to { transform: rotate(360deg); }
+}
+
+.skeleton {
+  background: var(--card-border);
+  animation: skeleton-pulse 1.2s ease-in-out infinite;
+}
+
+@keyframes skeleton-pulse {
+  50% { opacity: 0.45; }
 }
 
 .chart-tooltip {
