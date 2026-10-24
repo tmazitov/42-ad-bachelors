@@ -29,14 +29,12 @@ type SegmentKey = 'general' | 'standard' | 'stream' | 'elective'
 const TOTAL = 132
 const PAGE_SIZE = 10
 
-const SEGMENTS: { key: SegmentKey; label: string; short: string; color: string }[] = [
-  { key: 'general',  label: 'General',  short: 'GEN', color: '#22c55e' },
-  { key: 'standard', label: 'Standard', short: 'STD', color: '#3b82f6' },
-  { key: 'stream',   label: 'Stream',   short: 'STR', color: '#8b5cf6' },
-  { key: 'elective', label: 'Elective', short: 'ELE', color: '#f97316' },
+const SEGMENTS: { key: SegmentKey; label: string; color: string }[] = [
+  { key: 'general', label: 'General', color: '#22c55e' },
+  { key: 'standard', label: 'Standard', color: '#3b82f6' },
+  { key: 'stream', label: 'Stream', color: '#8b5cf6' },
+  { key: 'elective', label: 'Elective', color: '#f97316' },
 ]
-
-const MEDALS: Record<number, string> = { 1: '#eab308', 2: '#94a3b8', 3: '#c2703d' }
 
 const router = useRouter()
 const auth = useAuthStore()
@@ -50,20 +48,11 @@ const search = ref('')
 const students = computed(() => data.value?.students ?? [])
 const query = computed(() => search.value.trim().toLowerCase())
 
-// Podium shows the top 3 unless searching; the list shows everyone else.
-const podium = computed(() => (query.value ? [] : students.value.slice(0, 3)))
-// Display order: 2nd, 1st, 3rd
-const podiumOrdered = computed(() =>
-  [podium.value[1], podium.value[0], podium.value[2]].filter((s): s is LeaderboardStudent => !!s),
-)
-
 const listed = computed(() => {
-  if (query.value) {
-    return students.value.filter(
-      s => s.login.toLowerCase().includes(query.value) || s.display_name.toLowerCase().includes(query.value),
-    )
-  }
-  return students.value.slice(podium.value.length)
+  if (!query.value) return students.value
+  return students.value.filter(
+    s => s.login.toLowerCase().includes(query.value) || s.display_name.toLowerCase().includes(query.value),
+  )
 })
 
 const totalPages = computed(() => Math.ceil(listed.value.length / PAGE_SIZE))
@@ -73,6 +62,23 @@ const pageStudents = computed(() => {
 })
 
 watch(query, () => { page.value = 1 })
+
+// Page buttons: all pages when there are few, otherwise the first, the last
+// and a window around the current page, e.g. 1 … 4 5 6 … 20.
+const pageItems = computed<(number | '…')[]>(() => {
+  const total = totalPages.value
+  const current = page.value
+  if (total <= 7) return Array.from({ length: total }, (_, i) => i + 1)
+
+  const start = Math.max(2, Math.min(current - 1, total - 4))
+  const end = Math.min(total - 1, Math.max(current + 1, 5))
+  const items: (number | '…')[] = [1]
+  if (start > 2) items.push('…')
+  for (let p = start; p <= end; p++) items.push(p)
+  if (end < total - 1) items.push('…')
+  items.push(total)
+  return items
+})
 
 const updatedAt = computed(() => {
   const iso = data.value?.updated_at
@@ -173,46 +179,6 @@ onMounted(async () => {
         </button>
       </div>
 
-      <!-- Podium -->
-      <div
-        v-if="podiumOrdered.length"
-        class="lb-podium"
-        :style="{
-          gridTemplateColumns: `repeat(${podiumOrdered.length}, minmax(0, 1fr))`,
-          maxWidth: podiumOrdered.length < 3 ? `${podiumOrdered.length * 300}px` : undefined,
-        }"
-      >
-        <router-link
-          v-for="s in podiumOrdered"
-          :id="`lb-${s.login}`"
-          :key="s.login"
-          :to="`/profile/${s.login}`"
-          class="lb-card lb-podium__item"
-          :class="[`lb-podium__item--${s.rank}`, { 'lb-is-me': s.login === me?.login }]"
-          :style="{ '--medal': MEDALS[s.rank] ?? 'var(--card-border)' }"
-        >
-          <span class="lb-podium__medal">
-            <i v-if="s.rank === 1" class="pi pi-crown" />
-            <template v-else>{{ s.rank }}</template>
-          </span>
-          <StudentAvatar :login="s.login" :image="s.image" :size="s.rank === 1 ? 76 : 60" :ring="MEDALS[s.rank]" />
-          <div class="lb-podium__name">
-            <span class="font-semibold truncate">{{ s.login }}</span>
-            <span class="lb-muted text-xs truncate">{{ s.display_name }}</span>
-          </div>
-          <span class="lb-podium__pct">{{ s.percentage.toFixed(1) }}%</span>
-          <div class="lb-bar w-full">
-            <div
-              v-for="seg in SEGMENTS"
-              :key="seg.key"
-              class="lb-bar__seg"
-              :style="{ width: segWidth(s, seg.key), background: seg.color }"
-            />
-          </div>
-          <span class="lb-muted text-xs">{{ s.total }} / {{ TOTAL }} credits</span>
-        </router-link>
-      </div>
-
       <!-- Toolbar -->
       <div class="lb-toolbar">
         <IconField class="lb-search">
@@ -272,15 +238,17 @@ onMounted(async () => {
         <button class="lb-page-btn" :disabled="page === 1" @click="page--">
           <i class="pi pi-chevron-left" />
         </button>
-        <button
-          v-for="p in totalPages"
-          :key="p"
-          class="lb-page-btn"
-          :class="{ 'lb-page-btn--active': p === page }"
-          @click="page = p"
-        >
-          {{ p }}
-        </button>
+        <template v-for="(item, i) in pageItems" :key="`${item}-${i}`">
+          <span v-if="item === '…'" class="lb-page-gap">…</span>
+          <button
+            v-else
+            class="lb-page-btn"
+            :class="{ 'lb-page-btn--active': item === page }"
+            @click="page = item"
+          >
+            {{ item }}
+          </button>
+        </template>
         <button class="lb-page-btn" :disabled="page === totalPages" @click="page++">
           <i class="pi pi-chevron-right" />
         </button>
@@ -309,11 +277,6 @@ onMounted(async () => {
   padding: 3rem 1rem;
   text-align: center;
   color: var(--p-text-muted-color, #9ca3af);
-}
-
-.lb-is-me {
-  border-color: var(--p-primary-color, #10b981) !important;
-  background: color-mix(in srgb, var(--p-primary-color, #10b981) 8%, var(--card-bg));
 }
 
 /* Stats */
@@ -369,77 +332,6 @@ onMounted(async () => {
 .lb-stat--me:hover {
   border-color: var(--p-primary-color, #10b981);
   transform: translateY(-1px);
-}
-
-/* Podium */
-.lb-podium {
-  display: grid;
-  align-items: end;
-  gap: 1rem;
-  width: 100%;
-  margin: 0 auto;
-}
-
-.lb-podium__item {
-  position: relative;
-  display: flex;
-  flex-direction: column;
-  align-items: center;
-  gap: 0.625rem;
-  padding: 1.5rem 1rem 1.125rem;
-  border-top: 4px solid var(--medal);
-  text-decoration: none;
-  color: inherit;
-  min-width: 0;
-  transition: transform 0.15s, box-shadow 0.15s;
-}
-
-.lb-podium__item.lb-is-me {
-  border-top-color: var(--medal) !important;
-}
-
-.lb-podium__item:hover {
-  transform: translateY(-2px);
-  box-shadow: 0 6px 16px rgba(0, 0, 0, 0.08);
-}
-
-.lb-podium__item--1 {
-  padding-top: 2.25rem;
-  background: linear-gradient(180deg, color-mix(in srgb, var(--medal) 12%, var(--card-bg)), var(--card-bg) 60%);
-}
-
-.lb-podium__medal {
-  position: absolute;
-  top: 0.625rem;
-  left: 0.875rem;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  width: 1.75rem;
-  height: 1.75rem;
-  border-radius: 999px;
-  background: var(--medal);
-  color: #fff;
-  font-size: 0.8rem;
-  font-weight: 700;
-}
-
-.lb-podium__name {
-  display: flex;
-  flex-direction: column;
-  align-items: center;
-  min-width: 0;
-  max-width: 100%;
-}
-
-.lb-podium__pct {
-  font-size: 1.5rem;
-  font-weight: 700;
-  line-height: 1;
-}
-
-.lb-podium__item--1 .lb-podium__pct {
-  font-size: 1.875rem;
 }
 
 /* Toolbar */
@@ -582,6 +474,14 @@ onMounted(async () => {
   color: #fff;
 }
 
+.lb-page-gap {
+  min-width: 1.5rem;
+  line-height: 2rem;
+  text-align: center;
+  font-size: 0.8rem;
+  color: var(--p-text-muted-color, #9ca3af);
+}
+
 .lb-page-btn:disabled {
   opacity: 0.35;
   cursor: not-allowed;
@@ -589,31 +489,6 @@ onMounted(async () => {
 
 /* Mobile */
 @media (max-width: 640px) {
-  .lb-podium {
-    gap: 0.5rem;
-  }
-
-  .lb-podium__item {
-    padding: 1.25rem 0.5rem 0.875rem;
-  }
-
-  .lb-podium__item--1 {
-    padding-top: 1.75rem;
-  }
-
-  .lb-podium__pct,
-  .lb-podium__item--1 .lb-podium__pct {
-    font-size: 1.125rem;
-  }
-
-  .lb-podium__medal {
-    top: 0.375rem;
-    left: 0.375rem;
-    width: 1.375rem;
-    height: 1.375rem;
-    font-size: 0.7rem;
-  }
-
   .lb-stats {
     grid-template-columns: repeat(2, 1fr);
     gap: 0.5rem;
