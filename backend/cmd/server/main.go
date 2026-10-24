@@ -11,8 +11,10 @@ import (
 
 	"github.com/gofiber/fiber/v3"
 
+	"github.com/tmazitov/42-ad-bachelors/backend/internal/application/auth"
 	"github.com/tmazitov/42-ad-bachelors/backend/internal/config"
 	"github.com/tmazitov/42-ad-bachelors/backend/internal/domain/curriculum"
+	"github.com/tmazitov/42-ad-bachelors/backend/internal/infrastructure/ft"
 	"github.com/tmazitov/42-ad-bachelors/backend/internal/infrastructure/sqlite"
 	httpapi "github.com/tmazitov/42-ad-bachelors/backend/internal/interfaces/http"
 )
@@ -46,9 +48,18 @@ func run() error {
 		return fmt.Errorf("migrate: %w", err)
 	}
 
+	ftClient := ft.NewClient(ft.Config{
+		BaseURL:      cfg.FT.APIBase,
+		ClientID:     cfg.FT.ClientID,
+		ClientSecret: cfg.FT.ClientSecret,
+		RedirectURI:  cfg.FT.RedirectURI,
+	})
+	students := sqlite.NewStudentRepository(db)
+
 	app := httpapi.NewServer(cfg, httpapi.Deps{
 		DB:         db,
 		Curriculum: curriculum.ADBachelor(),
+		Auth:       auth.NewService(ftClient, students),
 		Log:        log,
 	})
 

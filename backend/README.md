@@ -6,7 +6,7 @@ It replaces the Cloudflare Worker (see `../docs/ARCHITECTURE.md` §4 and §9) an
 ## Run
 
 ```sh
-cp .env.example .env   # optional, defaults work for local dev
+cp .env.example .env   # fill in FT_CLIENT_ID / FT_CLIENT_SECRET
 make run               # http://localhost:8080
 make test
 ```
@@ -22,6 +22,8 @@ Docker: `make docker && docker run -p 8080:8080 -v ad-data:/data 42-ad-bachelors
 |---|---|---|
 | GET | `/healthz` | `{"status":"ok"}`; 503 if the database is unreachable |
 | GET | `/api/v1/curriculum` | Modules grouped by category, with credits and 42 project IDs |
+| POST | `/api/v1/oauth/token` | `{"code"}` → 42 token JSON. Registers the student. 400 if the code is invalid or expired |
+| POST | `/api/v1/oauth/refresh` | `{"refresh_token"}` → 42 token JSON. 401 if the refresh token is invalid or expired |
 
 Errors are always JSON: `{"error": "message"}`.
 
@@ -32,19 +34,28 @@ cmd/server/            Composition root: config → DB → migrations → HTTP; 
 internal/
   domain/              Business rules. Pure Go: no Fiber, no SQL, no HTTP clients.
     curriculum/        Module, Category, Curriculum, Progress; AD Bachelor data; credit calculation
-  application/         (next) Use cases that orchestrate domain + ports, e.g. login, sync, leaderboard
+    student/           Student aggregate + Repository port
+  application/         Use cases that orchestrate domain + ports
+    auth/              Login (code exchange + student registration), token refresh; Provider port
   infrastructure/      Adapters to the outside world
+    ft/                42 intra API client (implements auth.Provider)
     sqlite/            Connection, embedded migrations, repository implementations
   interfaces/http/     Fiber app, middleware, handlers, request/response DTOs
   config/              Env-based configuration
 ```
 
 Dependency rule: `interfaces` → `application` → `domain` ← `infrastructure`.
-- The **domain** defines repository and gateway interfaces (ports) next to the aggregates that need them,
-  for example `student.Repository`.
-- **Infrastructure** implements them: `sqlite.StudentRepository`, and a 42 API client in `infrastructure/ft`.
+- The **domain** defines repository interfaces next to their aggregates (`student.Repository`).
+- The **application** layer defines ports for external services its use cases need (`auth.Provider`).
+- **Infrastructure** implements them: `sqlite.StudentRepository` and `ft.Client`.
 - **Application** services take the interfaces in their constructors. `cmd/server` wires the concrete types.
 - **Handlers** convert HTTP to and from DTOs and call application services. They never touch SQL or domain internals.
+
+### Auth
+The frontend stores 42's own tokens and keeps calling the 42 API with them. The backend only holds the
+client secret, the same role the Cloudflare Worker had. The redirect URI comes from `FT_REDIRECT_URI`;
+a `redirect_uri` sent by the client is ignored. On the frontend, set
+`VITE_42_TOKEN_PROXY=http://localhost:8080/api/v1/oauth/token`; the refresh URL is derived from it.
 
 ### Conventions
 - One package per bounded context or aggregate under `domain/`. Name packages after the concept, not the layer.

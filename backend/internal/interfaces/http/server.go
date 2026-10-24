@@ -12,6 +12,7 @@ import (
 	"github.com/gofiber/fiber/v3/middleware/recover"
 	"github.com/gofiber/fiber/v3/middleware/requestid"
 
+	"github.com/tmazitov/42-ad-bachelors/backend/internal/application/auth"
 	"github.com/tmazitov/42-ad-bachelors/backend/internal/config"
 	"github.com/tmazitov/42-ad-bachelors/backend/internal/domain/curriculum"
 	"github.com/tmazitov/42-ad-bachelors/backend/internal/interfaces/http/handlers"
@@ -21,6 +22,7 @@ import (
 type Deps struct {
 	DB         *sql.DB
 	Curriculum curriculum.Curriculum
+	Auth       *auth.Service
 	Log        *slog.Logger
 }
 
@@ -44,6 +46,8 @@ func NewServer(cfg config.Config, deps Deps) *fiber.App {
 
 	api := app.Group("/api/v1")
 	api.Get("/curriculum", handlers.Curriculum(deps.Curriculum))
+	api.Post("/oauth/token", handlers.OAuthToken(deps.Auth))
+	api.Post("/oauth/refresh", handlers.OAuthRefresh(deps.Auth))
 
 	return app
 }

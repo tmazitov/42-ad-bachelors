@@ -209,7 +209,8 @@ but CI env vars override it.
 Things the backend must provide so the frontend keeps working, plus the planned additions:
 
 **Must replace**
-- `POST /oauth/token` and `POST /oauth/refresh`, with the same request and response shapes, or change `oauth.ts`.
+- ✅ `POST /oauth/token` and `POST /oauth/refresh`: done as `/api/v1/oauth/{token,refresh}` in `backend/`. They have the same
+  response shape, and the frontend works unchanged with `VITE_42_TOKEN_PROXY=<backend>/api/v1/oauth/token`.
 - `GET /leaderboard`, with the same response shape.
 - 42 API access for the SPA. Options: (a) keep a narrow `/v2/*` passthrough, possibly restricted to an
   allowlist of the GETs the SPA uses (`/v2/me`, `/v2/users`, `/v2/users/:x`, `/v2/users/:x/projects_users`,
