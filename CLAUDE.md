@@ -5,6 +5,7 @@ AD Bachelor's credits (132 total). **Read `docs/ARCHITECTURE.md` first** for the
 
 ## Layout
 - `frontend/`: the Vue SPA (all npm commands run from here)
+- `backend/`: Go + Fiber v3 + SQLite service, DDD layout. See `backend/README.md` for architecture and conventions
 - `worker/` + `wrangler.toml`: legacy Cloudflare Worker (to be removed)
 - `docs/`: project notes
 
@@ -14,9 +15,14 @@ AD Bachelor's credits (132 total). **Read `docs/ARCHITECTURE.md` first** for the
 - `npm run lint`: oxlint + eslint (both with `--fix`)
 - Env: copy `frontend/.env.example` → `frontend/.env`
 
+## Commands (in `backend/`)
+- `make run` (loads `.env`), `make test`, `make vet`, `make build`, `make docker`
+- Go 1.26 (auto-downloaded via GOTOOLCHAIN)
+
 ## Key facts
 - Curriculum (module → credits → 42 project IDs) lives in `frontend/src/utils/data.ts` **and** is duplicated in
-  `worker/index.js`. Keep them in sync until the Worker is removed.
+  `worker/index.js` and `backend/internal/domain/curriculum/ad_bachelor.go`. Keep all three in sync until
+  the frontend reads `GET /api/v1/curriculum` and the Worker is removed.
 - Credit logic: `frontend/src/composables/useProgress.ts` (each category capped; general is always 0 because there are no IDs).
 - All 42 API calls go through `apiFetch` (`frontend/src/services/apiFetch.ts`) with the user's token. Base is `VITE_42_API_BASE`.
 - `worker/index.js` (Cloudflare) handles OAuth token proxying, a generic 42 API proxy, and the hourly leaderboard in KV.

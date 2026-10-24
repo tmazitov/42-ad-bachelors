@@ -1,0 +1,74 @@
+package main
+
+import (
+	"context"
+	"errors"
+	"fmt"
+	"log/slog"
+	"os"
+	"os/signal"
+	"syscall"
+
+	"github.com/gofiber/fiber/v3"
+
+	"github.com/tmazitov/42-ad-bachelors/backend/internal/config"
+	"github.com/tmazitov/42-ad-bachelors/backend/internal/domain/curriculum"
+	"github.com/tmazitov/42-ad-bachelors/backend/internal/infrastructure/sqlite"
+	httpapi "github.com/tmazitov/42-ad-bachelors/backend/internal/interfaces/http"
+)
+
+func main() {
+	if err := run(); err != nil {
+		fmt.Fprintln(os.Stderr, "fatal:", err)
+		os.Exit(1)
+	}
+}
+
+func run() error {
+	cfg, err := config.Load()
+	if err != nil {
+		return fmt.Errorf("load config: %w", err)
+	}
+
+	log := slog.New(slog.NewJSONHandler(os.Stdout, &slog.HandlerOptions{Level: cfg.LogLevel}))
+	slog.SetDefault(log)
+
+	ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
+	defer stop()
+
+	db, err := sqlite.Open(ctx, cfg.DatabasePath)
+	if err != nil {
+		return err
+	}
+	defer db.Close()
+
+	if err := sqlite.Migrate(ctx, db); err != nil {
+		return fmt.Errorf("migrate: %w", err)
+	}
+
+	app := httpapi.NewServer(cfg, httpapi.Deps{
+		DB:         db,
+		Curriculum: curriculum.ADBachelor(),
+		Log:        log,
+	})
+
+	serveErr := make(chan error, 1)
+	go func() {
+		log.Info("listening", "addr", cfg.HTTPAddr)
+		serveErr <- app.Listen(cfg.HTTPAddr, fiber.ListenConfig{DisableStartupMessage: true})
+	}()
+
+	select {
+	case err := <-serveErr:
+		return err
+	case <-ctx.Done():
+	}
+
+	log.Info("shutting down")
+	shutdownCtx, cancel := context.WithTimeout(context.Background(), cfg.ShutdownTimeout)
+	defer cancel()
+	if err := app.ShutdownWithContext(shutdownCtx); err != nil && !errors.Is(err, context.DeadlineExceeded) {
+		return fmt.Errorf("shutdown: %w", err)
+	}
+	return nil
+}
