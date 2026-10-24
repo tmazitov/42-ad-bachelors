@@ -3,6 +3,7 @@ import { ref, computed, onMounted, watch } from 'vue'
 import { useRouter } from 'vue-router'
 import { Button, InputText, IconField, InputIcon } from 'primevue'
 import { useAuthStore } from '@/stores/auth'
+import { api } from '@/services/api'
 import StudentAvatar from '@/components/leaderboard/StudentAvatar.vue'
 
 interface LeaderboardStudent {
@@ -115,14 +116,8 @@ function segWidth(student: LeaderboardStudent, key: SegmentKey) {
 }
 
 onMounted(async () => {
-  if (!auth.token) {
-    router.replace('/')
-    return
-  }
   try {
-    const res = await fetch(`${import.meta.env.VITE_BACKEND_URL || ''}/api/v1/leaderboard`)
-    if (!res.ok) throw new Error(`${res.status}`)
-    data.value = await res.json()
+    data.value = await api<LeaderboardData>('/leaderboard')
   } catch (e) {
     error.value = e instanceof Error ? e.message : 'Failed to load leaderboard'
   } finally {

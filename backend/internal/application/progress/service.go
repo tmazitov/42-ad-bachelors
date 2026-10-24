@@ -71,7 +71,7 @@ func (s *Service) SyncAll(ctx context.Context, maxAge time.Duration) (report Syn
 	start := s.now()
 	defer func() { report.Duration = s.now().Sub(start) }()
 
-	students, err := s.students.List(ctx)
+	students, err := s.students.ListRegistered(ctx)
 	if err != nil {
 		return report, fmt.Errorf("list students: %w", err)
 	}

@@ -16,6 +16,7 @@ import (
 	"github.com/tmazitov/42-ad-bachelors/backend/internal/application/auth"
 	"github.com/tmazitov/42-ad-bachelors/backend/internal/application/avatar"
 	"github.com/tmazitov/42-ad-bachelors/backend/internal/application/progress"
+	"github.com/tmazitov/42-ad-bachelors/backend/internal/application/students"
 	"github.com/tmazitov/42-ad-bachelors/backend/internal/config"
 	"github.com/tmazitov/42-ad-bachelors/backend/internal/domain/curriculum"
 	"github.com/tmazitov/42-ad-bachelors/backend/internal/infrastructure/ft"
@@ -61,14 +62,16 @@ func run() error {
 		RatePerSecond: cfg.FT.RatePerSecond,
 		RatePerHour:   cfg.FT.RatePerHour,
 	})
-	students := sqlite.NewStudentRepository(db)
+	studentRepo := sqlite.NewStudentRepository(db)
 	bachelor := curriculum.ADBachelor()
-	progressSvc := progress.NewService(ftClient, ftClient, students, bachelor)
+	progressSvc := progress.NewService(ftClient, ftClient, studentRepo, bachelor)
+	authSvc := auth.NewService(ftClient, studentRepo, sqlite.NewSessionRepository(db), progressSvc, cfg.SessionTTL, log)
 
 	app := httpapi.NewServer(cfg, httpapi.Deps{
 		DB:         db,
 		Curriculum: bachelor,
-		Auth:       auth.NewService(ftClient, students, progressSvc, log),
+		Auth:       authSvc,
+		Students:   students.NewService(ftClient, progressSvc, ftClient, studentRepo, bachelor, cfg.StudentMaxAge, log),
 		Progress:   progressSvc,
 		Avatar:     avatar.NewService(ftClient),
 		Log:        log,
@@ -81,6 +84,11 @@ func run() error {
 		background.Go(func() {
 			scheduler.Every(ctx, cfg.SyncInterval, func(ctx context.Context) {
 				syncAll(ctx, log, progressSvc, cfg.SyncMaxAge)
+				if n, err := authSvc.DeleteExpiredSessions(ctx); err != nil {
+					log.Error("deleting expired sessions failed", "err", err)
+				} else if n > 0 {
+					log.Info("deleted expired sessions", "count", n)
+				}
 			})
 		})
 	} else {
@@ -89,7 +97,7 @@ func run() error {
 
 	serveErr := make(chan error, 1)
 	go func() {
-		log.Info("listening", "addr", cfg.HTTPAddr)
+		log.Info("listening", "addr", cfg.HTTPAddr, "public_url", cfg.PublicURL, "oauth_redirect_uri", cfg.FT.RedirectURI)
 		serveErr <- app.Listen(cfg.HTTPAddr, fiber.ListenConfig{DisableStartupMessage: true})
 	}()
 

@@ -1,36 +1,22 @@
 <script setup lang="ts">
-import { ref, computed, watch } from 'vue'
-import { useRouter } from 'vue-router'
+import { ref, computed } from 'vue'
+import { useRoute, useRouter } from 'vue-router'
 import { Avatar, Button, Menu } from 'primevue'
 import type { MenuItem } from 'primevue/menuitem'
 import { useThemeStore } from '@/stores/theme'
 import { useAuthStore } from '@/stores/auth'
-import { useMyProgressStore } from '@/stores/myProgress'
 import { CREDITS_REQUIRED } from '@/composables/useProgress'
-import { redirectToLogin } from '@/services/oauth'
 import SearchModal from '@/components/search/SearchModal.vue'
 import { proxiedImage } from '@/utils/avatar'
 
 const router = useRouter()
+const route = useRoute()
 const theme = useThemeStore()
 const auth = useAuthStore()
 
-if (auth.token && !auth.user) {
-  auth.fetchUser()
-}
-
-const avatarUrl = computed(() =>
-  proxiedImage(auth.user?.image?.versions?.medium ?? auth.user?.image?.link)
-)
+const avatarUrl = computed(() => proxiedImage(auth.user?.image))
 
 const searchVisible = ref(false)
-
-const myProgress = useMyProgressStore()
-watch(
-  () => auth.user?.id,
-  (id) => { if (id) myProgress.load(id) },
-  { immediate: true },
-)
 
 const PROGRESS_SEGMENTS = [
   { key: 'general' as const, color: '#22c55e' },
@@ -38,7 +24,6 @@ const PROGRESS_SEGMENTS = [
   { key: 'stream' as const, color: '#8b5cf6' },
   { key: 'elective' as const, color: '#f97316' },
 ]
-const progressReady = computed(() => !!auth.user && myProgress.loadedFor === auth.user.id)
 
 const profileMenu = ref<InstanceType<typeof Menu> | null>(null)
 const profileMenuOpen = ref(false)
@@ -52,9 +37,9 @@ const profileMenuItems = computed<MenuItem[]>(() => [
   {
     label: 'Log out',
     icon: 'pi pi-sign-out',
-    command: () => {
-      myProgress.reset()
-      auth.logout()
+    command: async () => {
+      await auth.logout()
+      router.push('/')
     },
   },
 ])
@@ -123,33 +108,29 @@ function openMyProgress() {
         >
           <template #start>
             <button type="button" class="menu-progress" title="Open my progress" @click="openMyProgress">
-              <span class="menu-progress__name">{{ auth.user.displayname }}</span>
+              <span class="menu-progress__name">{{ auth.user.display_name }}</span>
               <span class="menu-progress__login">{{ auth.user.login }}</span>
 
               <div class="menu-progress__row">
                 <span class="menu-progress__label">Bachelor progress</span>
-                <span v-if="progressReady" class="menu-progress__pct">
-                  {{ myProgress.progress.percentage.toFixed(1) }}%
+                <span class="menu-progress__pct">
+                  {{ auth.user.progress.percentage.toFixed(1) }}%
                 </span>
-                <i v-else-if="!myProgress.error" class="pi pi-spinner pi-spin menu-progress__spinner" />
-                <span v-else class="menu-progress__label">unavailable</span>
               </div>
 
               <div class="menu-progress__bar">
-                <template v-if="progressReady">
-                  <div
-                    v-for="seg in PROGRESS_SEGMENTS"
-                    :key="seg.key"
-                    :style="{
-                      width: `${(myProgress.progress[seg.key] / CREDITS_REQUIRED.total) * 100}%`,
-                      background: seg.color,
-                    }"
-                  />
-                </template>
+                <div
+                  v-for="seg in PROGRESS_SEGMENTS"
+                  :key="seg.key"
+                  :style="{
+                    width: `${(auth.user.progress[seg.key] / CREDITS_REQUIRED.total) * 100}%`,
+                    background: seg.color,
+                  }"
+                />
               </div>
 
-              <span v-if="progressReady" class="menu-progress__credits">
-                {{ myProgress.progress.total }} / {{ CREDITS_REQUIRED.total }} credits
+              <span class="menu-progress__credits">
+                {{ auth.user.progress.total }} / {{ CREDITS_REQUIRED.total }} credits
               </span>
             </button>
           </template>
@@ -162,8 +143,8 @@ function openMyProgress() {
           icon="pi pi-sign-in"
           class="h-10"
           rounded
-          :loading="auth.loading"
-          @click="redirectToLogin()"
+          :loading="auth.loading || auth.redirecting || route.name === 'auth-callback'"
+          @click="auth.login()"
         />
         <Button
           :icon="theme.isDark ? 'pi pi-sun' : 'pi pi-moon'"
@@ -277,11 +258,6 @@ function openMyProgress() {
   font-size: 1.25rem;
   font-weight: 700;
   line-height: 1;
-}
-
-.menu-progress__spinner {
-  font-size: 0.875rem;
-  color: var(--p-text-muted-color, #9ca3af);
 }
 
 .menu-progress__bar {

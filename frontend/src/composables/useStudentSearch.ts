@@ -1,13 +1,17 @@
 import { ref, watch, type Ref } from 'vue'
-import { useAuthStore } from '@/stores/auth'
-import type { FtUser } from '@/stores/auth'
-import { apiFetch } from '@/services/apiFetch'
+import { api } from '@/services/api'
+import type { StudentSummary } from '@/models/Student'
 
-const PER_PAGE = 10
+interface SearchResponse {
+  students: StudentSummary[]
+  total: number
+  page: number
+  page_size: number
+}
 
+// Searches students registered in the app by login or display name.
 export function useStudentSearch(query: Ref<string>) {
-  const auth = useAuthStore()
-  const results = ref<FtUser[]>([])
+  const results = ref<StudentSummary[]>([])
   const loading = ref(false)
   const page = ref(1)
   const totalPages = ref(0)
@@ -16,11 +20,8 @@ export function useStudentSearch(query: Ref<string>) {
 
   watch(query, (val) => {
     if (debounceTimer) clearTimeout(debounceTimer)
-
-    if (abortController) {
-      abortController.abort()
-      abortController = null
-    }
+    abortController?.abort()
+    abortController = null
 
     const trimmed = val.trim()
     if (!trimmed) {
@@ -31,34 +32,24 @@ export function useStudentSearch(query: Ref<string>) {
       return
     }
 
+    // Searching the local database is cheap, so a short debounce is enough.
     debounceTimer = setTimeout(() => {
       if (trimmed === query.value.trim()) search(trimmed, 1)
-    }, 500)
+    }, 250)
   })
 
   async function search(q: string, p: number) {
-    if (!auth.token) return
-
-    if (abortController) abortController.abort()
+    abortController?.abort()
     abortController = new AbortController()
     const { signal } = abortController
 
     loading.value = true
     try {
-      const res = await apiFetch(
-        `${import.meta.env.VITE_42_API_BASE || ''}/v2/users?search[login]=${encodeURIComponent(q)}&per_page=${PER_PAGE}&page=${p}`,
-        { signal },
-      )
-      if (!res.ok) throw new Error(`${res.status}`)
-
-      const data: FtUser[] = await res.json()
-      results.value = data
-      page.value = p
-
-      const total = parseInt(res.headers.get('X-Total') ?? '0', 10)
-      totalPages.value = total > 0
-        ? Math.ceil(total / PER_PAGE)
-        : (data.length === PER_PAGE ? p + 1 : p)
+      const params = new URLSearchParams({ search: q, page: String(p) })
+      const data = await api<SearchResponse>(`/students?${params}`, { signal })
+      results.value = data.students
+      page.value = data.page
+      totalPages.value = Math.ceil(data.total / data.page_size)
     } catch {
       if (signal.aborted) return
       results.value = []
@@ -76,10 +67,8 @@ export function useStudentSearch(query: Ref<string>) {
 
   function reset() {
     if (debounceTimer) clearTimeout(debounceTimer)
-    if (abortController) {
-      abortController.abort()
-      abortController = null
-    }
+    abortController?.abort()
+    abortController = null
     results.value = []
     page.value = 1
     totalPages.value = 0

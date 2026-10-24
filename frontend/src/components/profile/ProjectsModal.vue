@@ -2,7 +2,7 @@
 import { computed, ref } from 'vue'
 import { Dialog, DataTable, Column, InputText } from 'primevue'
 import type { Project, Team } from '@/models/Project'
-import type { ProjectUser } from '@/composables/useProjects'
+import type { StudentProject } from '@/models/Student'
 import { isCompleted } from '@/composables/useProgress'
 
 const props = defineProps<{
@@ -13,17 +13,17 @@ const props = defineProps<{
   max: number
   unit: string
   projects: Project[]
-  completedProjects: ProjectUser[]
+  completedProjects: StudentProject[]
 }>()
 
 const emit = defineEmits<{ 'update:visible': [value: boolean] }>()
 
-const completedIds = computed(() => new Set(props.completedProjects.filter((p) => p['validated?']).map((p) => p.project.id)))
+const completedIds = computed(() => new Set(props.completedProjects.map((p) => p.project_id)))
 
 const slugMap = computed(() => {
   const map = new Map<number, string>()
-  for (const pu of props.completedProjects) {
-    if (pu.project?.slug) map.set(pu.project.id, pu.project.slug)
+  for (const p of props.completedProjects) {
+    if (p.slug) map.set(p.project_id, p.slug)
   }
   return map
 })

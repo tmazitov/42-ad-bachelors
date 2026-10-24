@@ -1,5 +1,6 @@
-// Package auth implements sign-in with 42 OAuth. The backend keeps the client
-// secret; the browser receives and stores the 42 tokens.
+// Package auth implements sign-in with 42 OAuth. The backend exchanges the
+// code, registers the student and opens a session; the browser only ever
+// holds the session token (in an httpOnly cookie), never a 42 token.
 package auth
 
 import (
@@ -7,13 +8,19 @@ import (
 	"errors"
 	"fmt"
 	"log/slog"
+	"time"
 
+	"github.com/tmazitov/42-ad-bachelors/backend/internal/domain/session"
 	"github.com/tmazitov/42-ad-bachelors/backend/internal/domain/student"
 )
 
-// ErrInvalidGrant means the authorization code or refresh token was rejected
-// by 42 (invalid, expired or already used).
-var ErrInvalidGrant = errors.New("invalid grant")
+var (
+	// ErrInvalidGrant means the authorization code was rejected by 42
+	// (invalid, expired or already used).
+	ErrInvalidGrant = errors.New("invalid grant")
+	// ErrUnauthenticated means the session token is missing, unknown or expired.
+	ErrUnauthenticated = errors.New("not signed in")
+)
 
 // Token is a 42 OAuth token pair.
 type Token struct {
@@ -25,19 +32,12 @@ type Token struct {
 	CreatedAt    int64 // unix seconds
 }
 
-// Profile is the signed-in 42 user.
-type Profile struct {
-	ID          int
-	Login       string
-	DisplayName string
-	ImageURL    string
-}
-
 // Provider is the 42 OAuth server.
 type Provider interface {
+	AuthorizeURL(state string) string
 	ExchangeCode(ctx context.Context, code string) (Token, error)
-	RefreshToken(ctx context.Context, refreshToken string) (Token, error)
-	Profile(ctx context.Context, accessToken string) (Profile, error)
+	// Profile returns the user who owns accessToken.
+	Profile(ctx context.Context, accessToken string) (student.Student, error)
 }
 
 // ProgressSyncer refreshes a student's stored projects.
@@ -47,44 +47,94 @@ type ProgressSyncer interface {
 
 // Service runs the sign-in use cases.
 type Service struct {
-	provider Provider
-	students student.Repository
-	progress ProgressSyncer
-	log      *slog.Logger
+	provider   Provider
+	students   student.Repository
+	sessions   session.Repository
+	progress   ProgressSyncer
+	sessionTTL time.Duration
+	log        *slog.Logger
+	now        func() time.Time
 }
 
-func NewService(provider Provider, students student.Repository, progress ProgressSyncer, log *slog.Logger) *Service {
-	return &Service{provider: provider, students: students, progress: progress, log: log}
+func NewService(provider Provider, students student.Repository, sessions session.Repository,
+	progress ProgressSyncer, sessionTTL time.Duration, log *slog.Logger) *Service {
+	return &Service{
+		provider:   provider,
+		students:   students,
+		sessions:   sessions,
+		progress:   progress,
+		sessionTTL: sessionTTL,
+		log:        log,
+		now:        time.Now,
+	}
 }
 
-// Login exchanges an authorization code for tokens, registers the student and
-// syncs their projects. A failed sync is logged but does not fail the login.
-func (s *Service) Login(ctx context.Context, code string) (Token, error) {
-	token, err := s.provider.ExchangeCode(ctx, code)
+// AuthorizeURL returns the 42 sign-in page URL carrying state.
+func (s *Service) AuthorizeURL(state string) string {
+	return s.provider.AuthorizeURL(state)
+}
+
+// Login exchanges an authorization code, registers the student, syncs their
+// projects and opens a session. It returns the session token and its expiry.
+// A failed sync is logged but does not fail the login.
+func (s *Service) Login(ctx context.Context, code string) (token string, expires time.Time, err error) {
+	t, err := s.provider.ExchangeCode(ctx, code)
 	if err != nil {
-		return Token{}, err
+		return "", time.Time{}, err
 	}
 
-	profile, err := s.provider.Profile(ctx, token.AccessToken)
+	st, err := s.provider.Profile(ctx, t.AccessToken)
 	if err != nil {
-		return Token{}, fmt.Errorf("fetch profile: %w", err)
+		return "", time.Time{}, fmt.Errorf("fetch profile: %w", err)
 	}
-
-	st, err := student.New(student.ID(profile.ID), profile.Login, profile.DisplayName, profile.ImageURL)
-	if err != nil {
-		return Token{}, err
-	}
+	now := s.now().UTC()
+	st.RegisteredAt = now
 	if err := s.students.Save(ctx, st); err != nil {
-		return Token{}, fmt.Errorf("save student: %w", err)
+		return "", time.Time{}, fmt.Errorf("save student: %w", err)
 	}
 
-	if err := s.progress.SyncStudent(ctx, token.AccessToken, st.ID); err != nil {
+	if err := s.progress.SyncStudent(ctx, t.AccessToken, st.ID); err != nil {
 		s.log.WarnContext(ctx, "progress sync on login failed", "login", st.Login, "err", err)
 	}
-	return token, nil
+
+	token, sess, err := session.New(st.ID, s.sessionTTL, now)
+	if err != nil {
+		return "", time.Time{}, err
+	}
+	if err := s.sessions.Create(ctx, sess); err != nil {
+		return "", time.Time{}, fmt.Errorf("create session: %w", err)
+	}
+	return token, sess.ExpiresAt, nil
 }
 
-// Refresh exchanges a refresh token for a new token pair.
-func (s *Service) Refresh(ctx context.Context, refreshToken string) (Token, error) {
-	return s.provider.RefreshToken(ctx, refreshToken)
+// Authenticate returns the student signed in with token.
+func (s *Service) Authenticate(ctx context.Context, token string) (student.ID, error) {
+	if token == "" {
+		return 0, ErrUnauthenticated
+	}
+	sess, err := s.sessions.Find(ctx, session.HashToken(token))
+	if errors.Is(err, session.ErrNotFound) {
+		return 0, ErrUnauthenticated
+	}
+	if err != nil {
+		return 0, err
+	}
+	if sess.Expired(s.now()) {
+		_ = s.sessions.Delete(ctx, sess.TokenHash)
+		return 0, ErrUnauthenticated
+	}
+	return sess.StudentID, nil
+}
+
+// Logout ends the session for token. Unknown tokens are ignored.
+func (s *Service) Logout(ctx context.Context, token string) error {
+	if token == "" {
+		return nil
+	}
+	return s.sessions.Delete(ctx, session.HashToken(token))
+}
+
+// DeleteExpiredSessions removes expired sessions and returns how many.
+func (s *Service) DeleteExpiredSessions(ctx context.Context) (int64, error) {
+	return s.sessions.DeleteExpired(ctx, s.now())
 }

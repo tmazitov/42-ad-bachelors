@@ -28,17 +28,16 @@ type fakeTokens struct{ err error }
 func (f fakeTokens) AppToken(context.Context) (string, error) { return "app", f.err }
 
 type memRepo struct {
+	student.Repository
 	students []student.Student
 	replaced []student.ID
 }
 
-func (m *memRepo) Save(context.Context, student.Student) error { return nil }
 func (m *memRepo) ReplaceProjects(_ context.Context, id student.ID, _ []student.CompletedProject, _ time.Time) error {
 	m.replaced = append(m.replaced, id)
 	return nil
 }
-func (m *memRepo) List(context.Context) ([]student.Student, error)       { return m.students, nil }
-func (m *memRepo) ListSynced(context.Context) ([]student.Student, error) { return nil, nil }
+func (m *memRepo) ListRegistered(context.Context) ([]student.Student, error) { return m.students, nil }
 
 func newRepo() *memRepo {
 	return &memRepo{students: []student.Student{

@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"net/http"
 	"net/http/httptest"
+	"net/url"
 	"testing"
 	"time"
 
@@ -53,7 +54,7 @@ func TestInvalidGrant(t *testing.T) {
 		w.Write([]byte(`{"error":"invalid_grant","error_description":"expired"}`))
 	})
 
-	if _, err := c.RefreshToken(context.Background(), "old"); !errors.Is(err, auth.ErrInvalidGrant) {
+	if _, err := c.ExchangeCode(context.Background(), "old"); !errors.Is(err, auth.ErrInvalidGrant) {
 		t.Fatalf("err = %v, want ErrInvalidGrant", err)
 	}
 }
@@ -75,15 +76,47 @@ func TestProfileFallsBackToImageLink(t *testing.T) {
 		if r.Header.Get("Authorization") != "Bearer tok" {
 			t.Errorf("Authorization = %q", r.Header.Get("Authorization"))
 		}
-		w.Write([]byte(`{"id":7,"login":"jdoe","displayname":"John","image":{"link":"http://img","versions":{"medium":null}}}`))
+		w.Write([]byte(`{"id":7,"login":"jdoe","displayname":"John","alumni?":true,"image":{"link":"http://img","versions":{"medium":null}}}`))
 	})
 
 	p, err := c.Profile(context.Background(), "tok")
 	if err != nil {
 		t.Fatal(err)
 	}
-	if p != (auth.Profile{ID: 7, Login: "jdoe", DisplayName: "John", ImageURL: "http://img"}) {
+	if p.ID != 7 || p.Login != "jdoe" || p.DisplayName != "John" || p.ImageURL != "http://img" || !p.Alumni || p.Staff {
 		t.Errorf("profile = %+v", p)
+	}
+}
+
+func TestUserByLogin(t *testing.T) {
+	c := newTestClient(t, func(w http.ResponseWriter, r *http.Request) {
+		if r.URL.Path == "/v2/users/jdoe" {
+			w.Write([]byte(`{"id":7,"login":"jdoe","displayname":"John","staff?":true}`))
+			return
+		}
+		w.WriteHeader(http.StatusNotFound)
+		w.Write([]byte(`{}`))
+	})
+
+	u, err := c.UserByLogin(context.Background(), "app", "jdoe")
+	if err != nil || u.ID != 7 || !u.Staff {
+		t.Errorf("UserByLogin(jdoe) = %+v, %v", u, err)
+	}
+	if _, err := c.UserByLogin(context.Background(), "app", "ghost"); !errors.Is(err, student.ErrNotFound) {
+		t.Errorf("UserByLogin(ghost) err = %v, want ErrNotFound", err)
+	}
+}
+
+func TestAuthorizeURL(t *testing.T) {
+	c := NewClient(Config{BaseURL: "https://api.intra.42.fr", ClientID: "id", RedirectURI: "http://app/api/v1/auth/callback"})
+	u, err := url.Parse(c.AuthorizeURL("xyz"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	q := u.Query()
+	if u.Path != "/oauth/authorize" || q.Get("client_id") != "id" || q.Get("state") != "xyz" ||
+		q.Get("redirect_uri") != "http://app/api/v1/auth/callback" || q.Get("response_type") != "code" {
+		t.Errorf("authorize URL = %s", u)
 	}
 }
 
@@ -102,7 +135,7 @@ func TestCompletedProjectsPaginatesAndFiltersValidated(t *testing.T) {
 			for i := range 99 {
 				fmt.Fprintf(w, `{"validated?":false,"project":{"id":%d}},`, 5000+i)
 			}
-			w.Write([]byte(`{"validated?":true,"final_mark":125,"marked_at":"2024-03-01T10:00:00.000Z","project":{"id":1314}}]`))
+			w.Write([]byte(`{"validated?":true,"final_mark":125,"marked_at":"2024-03-01T10:00:00.000Z","project":{"id":1314,"slug":"42cursus-libft"}}]`))
 			return
 		}
 		w.Write([]byte(`[{"validated?":true,"final_mark":null,"marked_at":null,"project":{"id":1327}},{"validated?":null,"project":{"id":1}}]`))
@@ -116,14 +149,14 @@ func TestCompletedProjectsPaginatesAndFiltersValidated(t *testing.T) {
 		t.Errorf("requested pages %v, want [1 2]", pages)
 	}
 	want := []student.CompletedProject{
-		{ProjectID: 1314, FinalMark: 125, MarkedAt: time.Date(2024, 3, 1, 10, 0, 0, 0, time.UTC)},
+		{ProjectID: 1314, Slug: "42cursus-libft", FinalMark: 125, MarkedAt: time.Date(2024, 3, 1, 10, 0, 0, 0, time.UTC)},
 		{ProjectID: 1327},
 	}
 	if len(got) != len(want) {
 		t.Fatalf("got %+v, want %+v", got, want)
 	}
 	for i := range want {
-		if got[i].ProjectID != want[i].ProjectID || got[i].FinalMark != want[i].FinalMark || !got[i].MarkedAt.Equal(want[i].MarkedAt) {
+		if got[i].ProjectID != want[i].ProjectID || got[i].Slug != want[i].Slug || got[i].FinalMark != want[i].FinalMark || !got[i].MarkedAt.Equal(want[i].MarkedAt) {
 			t.Errorf("#%d = %+v, want %+v", i, got[i], want[i])
 		}
 	}

@@ -2,59 +2,19 @@
 import { watch, nextTick, ref, computed } from 'vue'
 import { useRouter } from 'vue-router'
 import { useStudentSearch } from '@/composables/useStudentSearch'
-import { useProjectSearch } from '@/composables/useProjectSearch'
-import {
-  generalEducationModules,
-  standardModules,
-  streamModules,
-  electiveModules,
-  allGroups,
-} from '@/utils/data'
-import type { ProjectGroup } from '@/models/ProjectGroup'
 import { proxiedImage } from '@/utils/avatar'
-
-const GROUP_COLORS = new Map<ProjectGroup, string>([
-  [generalEducationModules, '#22c55e'],
-  [standardModules, '#3b82f6'],
-  [streamModules, '#8b5cf6'],
-  [electiveModules, '#f97316'],
-])
-
-const bachelorMap = new Map<number, { code: string; color: string }>()
-for (const group of allGroups) {
-  const color = GROUP_COLORS.get(group) ?? '#6b7280'
-  for (const project of group.projects) {
-    if (project.id === null) continue
-    const ids = Array.isArray(project.id) ? project.id : [project.id]
-    for (const id of ids) bachelorMap.set(id, { code: project.code, color })
-  }
-}
-
-function withAlpha(hex: string, alpha: number): string {
-  return hex + Math.round(alpha * 255).toString(16).padStart(2, '0')
-}
 
 const props = defineProps<{ visible: boolean }>()
 const emit = defineEmits<{ 'update:visible': [value: boolean] }>()
 
 const router = useRouter()
-
-const activeTab = ref<'students' | 'projects'>('students')
 const query = ref('')
 
-const studentQuery = computed(() => activeTab.value === 'students' ? query.value : '')
-const projectQuery = computed(() => activeTab.value === 'projects' ? query.value : '')
-
-const { results: studentResults, loading: studentsLoading, page, totalPages, goToPage, reset: resetStudents } = useStudentSearch(studentQuery)
-const { results: projectResults, loading: projectsLoading, reset: resetProjects } = useProjectSearch(projectQuery)
+const { results, loading, page, totalPages, goToPage, reset } = useStudentSearch(query)
 
 const inputRef = ref<HTMLInputElement | null>(null)
 
-const loading = computed(() => studentsLoading.value || projectsLoading.value)
-const isEmpty = computed(() => {
-  const results = activeTab.value === 'students' ? studentResults.value : projectResults.value
-  return query.value.trim() && !loading.value && results.length === 0
-})
+const isEmpty = computed(() => query.value.trim() && !loading.value && results.value.length === 0)
 
 function close() {
   emit('update:visible', false)
@@ -63,25 +23,15 @@ function close() {
 watch(() => props.visible, (val) => {
   if (!val) {
     query.value = ''
-    activeTab.value = 'students'
-    resetStudents()
-    resetProjects()
+    reset()
   } else {
     nextTick(() => inputRef.value?.focus())
   }
 })
 
-function switchTab(tab: 'students' | 'projects') {
-  activeTab.value = tab
-}
-
 function selectUser(login: string) {
   close()
   router.push(`/profile/${login}`)
-}
-
-function selectProject(slug: string) {
-  window.open(`https://projects.intra.42.fr/projects/${slug}`, '_blank', 'noopener,noreferrer')
 }
 </script>
 
@@ -97,31 +47,12 @@ function selectProject(slug: string) {
         <div class="search-box" role="dialog" aria-modal="true" aria-label="Search">
           <div class="drag-handle" />
 
-          <div class="tab-bar">
-            <button
-              class="tab-btn"
-              :class="{ 'tab-btn--active': activeTab === 'students' }"
-              @click="switchTab('students')"
-            >
-              <i class="pi pi-users" />
-              Students
-            </button>
-            <button
-              class="tab-btn"
-              :class="{ 'tab-btn--active': activeTab === 'projects' }"
-              @click="switchTab('projects')"
-            >
-              <i class="pi pi-box" />
-              Projects
-            </button>
-          </div>
-
           <div class="search-field-wrap">
             <i class="pi pi-search search-icon" />
             <input
               ref="inputRef"
               v-model="query"
-              :placeholder="activeTab === 'students' ? 'Search by login…' : 'Search by name…'"
+              placeholder="Search students by login or name…"
               class="search-input"
               autocomplete="off"
               spellcheck="false"
@@ -134,63 +65,34 @@ function selectProject(slug: string) {
           </div>
 
           <div class="results-wrap">
-            <template v-if="activeTab === 'students'">
-              <button
-                v-for="user in studentResults"
-                :key="user.id"
-                class="result-item"
-                @click="selectUser(user.login)"
-              >
-                <div class="result-avatar">
-                  <span class="result-avatar__initial">{{ user.login[0]?.toUpperCase() }}</span>
-                  <img
-                    v-if="user.image?.versions?.small ?? user.image?.link"
-                    :src="proxiedImage(user.image?.versions?.small ?? user.image?.link)!"
-                    class="result-avatar__img"
-                    alt=""
-                    @load="(e) => (e.target as HTMLElement).classList.add('is-loaded')"
-                  />
-                </div>
-                <div class="result-info">
-                  <span class="result-primary">{{ user.login }}</span>
-                  <span class="result-secondary">{{ user.displayname }}</span>
-                </div>
-              </button>
-            </template>
-
-            <template v-else>
-              <button
-                v-for="project in projectResults"
-                :key="project.id"
-                class="result-item"
-                @click="selectProject(project.slug)"
-              >
-                <div class="result-icon">
-                  <i class="pi pi-box" />
-                </div>
-                <div class="result-info">
-                  <span class="result-primary">{{ project.name }}</span>
-                  <span class="result-secondary">{{ project.slug }}</span>
-                </div>
-                <span
-                  v-if="bachelorMap.has(project.id)"
-                  class="project-badge"
-                  :style="{
-                    background: withAlpha(bachelorMap.get(project.id)!.color, 0.15),
-                    color: bachelorMap.get(project.id)!.color,
-                  }"
-                >{{ bachelorMap.get(project.id)!.code }}</span>
-                <span v-else class="project-badge project-badge--out">External</span>
-                <i class="pi pi-external-link result-external" />
-              </button>
-            </template>
+            <button
+              v-for="user in results"
+              :key="user.login"
+              class="result-item"
+              @click="selectUser(user.login)"
+            >
+              <div class="result-avatar">
+                <span class="result-avatar__initial">{{ user.login[0]?.toUpperCase() }}</span>
+                <img
+                  v-if="user.image"
+                  :src="proxiedImage(user.image)!"
+                  class="result-avatar__img"
+                  alt=""
+                  @load="(e) => (e.target as HTMLElement).classList.add('is-loaded')"
+                />
+              </div>
+              <div class="result-info">
+                <span class="result-primary">{{ user.login }}</span>
+                <span class="result-secondary">{{ user.display_name }}</span>
+              </div>
+            </button>
 
             <div v-if="isEmpty" class="empty-state">
               <span class="empty-emoji">🔍</span>
-              <p class="empty-hint">No {{ activeTab === 'students' ? 'students' : 'projects' }} found</p>
+              <p class="empty-hint">No students found</p>
             </div>
             <p v-else-if="!query.trim()" class="empty-hint">
-              {{ activeTab === 'students' ? 'Type a login to search' : 'Type a name to search' }}
+              Students appear here after they sign in to the app
             </p>
           </div>
 
@@ -311,42 +213,6 @@ function selectProject(slug: string) {
   background: var(--p-content-hover-background, rgba(0, 0, 0, 0.07));
 }
 
-/* ── Tab bar ─────────────────────────── */
-.tab-bar {
-  display: flex;
-  gap: 0.25rem;
-  background: var(--color-background-mute);
-  border-radius: 0.75rem;
-  padding: 0.25rem;
-}
-
-.tab-btn {
-  flex: 1;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  gap: 0.375rem;
-  padding: 0.4rem 0.75rem;
-  border: none;
-  border-radius: 0.5rem;
-  background: transparent;
-  color: var(--p-text-muted-color, #9ca3af);
-  font-size: 0.8125rem;
-  font-weight: 500;
-  cursor: pointer;
-  transition: background 0.15s, color 0.15s;
-}
-
-.tab-btn:hover:not(.tab-btn--active) {
-  color: inherit;
-}
-
-.tab-btn--active {
-  background: var(--p-primary-color, #3b82f6);
-  color: #fff;
-  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.2);
-}
-
 /* ── Results ─────────────────────────── */
 .results-wrap {
   display: flex;
@@ -411,52 +277,6 @@ function selectProject(slug: string) {
 
 .result-avatar__img.is-loaded {
   opacity: 1;
-}
-
-/* ── Project icon ────────────────────── */
-.result-icon {
-  width: 2rem;
-  height: 2rem;
-  border-radius: 0.5rem;
-  background: var(--color-background-mute);
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  flex-shrink: 0;
-  font-size: 0.875rem;
-  color: var(--p-primary-color, #3b82f6);
-  border: 1px solid var(--card-border);
-}
-
-.result-external {
-  font-size: 0.7rem;
-  color: var(--p-text-muted-color, #9ca3af);
-  opacity: 0;
-  transition: opacity 0.15s;
-  flex-shrink: 0;
-}
-
-.result-item:hover .result-external {
-  opacity: 1;
-}
-
-.project-badge {
-  margin-left: auto;
-  flex-shrink: 0;
-  font-size: 0.7rem;
-  font-weight: 600;
-  padding: 0.15rem 0.5rem;
-  border-radius: 999px;
-  letter-spacing: 0.02em;
-}
-
-.project-badge--out {
-  background: rgba(0, 0, 0, 0.06);
-  color: var(--p-text-muted-color, #9ca3af);
-}
-
-.dark .project-badge--out {
-  background: rgba(255, 255, 255, 0.07);
 }
 
 /* ── Result text ─────────────────────── */

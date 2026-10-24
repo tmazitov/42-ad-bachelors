@@ -7,28 +7,27 @@ Log in with your 42 account to see which modules you've completed, how many cred
 
 ## Stack
 
-- Vue 3 + TypeScript + Vite
-- PrimeVue (UI components) + Tailwind CSS v4
-- Chart.js (progress doughnut)
-- 42 Network OAuth 2.0 API
+- Frontend: Vue 3 + TypeScript + Vite, PrimeVue + Tailwind CSS v4, Chart.js
+- Backend: Go + Fiber v3 + SQLite (`backend/`), 42 Network OAuth 2.0 API
 
 ## Setup
 
-The web app lives in `frontend/`. Create `frontend/.env` (see `frontend/.env.example`) with your 42 API credentials:
+1. Create a 42 OAuth app and register the redirect URI `http://localhost:5173/auth/callback`.
+2. Backend:
+   ```sh
+   cd backend
+   cp .env.example .env   # set FT_CLIENT_ID and FT_CLIENT_SECRET
+   make run               # http://localhost:8080
+   ```
+3. Frontend (no env needed; Vite proxies `/api` to the backend):
+   ```sh
+   cd frontend
+   npm install
+   npm run dev            # http://localhost:5173
+   ```
 
-```
-VITE_42_CLIENT_ID=your_client_id
-VITE_42_CLIENT_SECRET=your_client_secret
-VITE_42_REDIRECT_URI=http://localhost:5173/auth/callback
-```
-
-Then install and run:
-
-```sh
-cd frontend
-npm install
-npm run dev
-```
+In production, serve `frontend/dist` and the backend on one domain (reverse proxy `/api` → backend) and set
+`PUBLIC_URL` to that domain.
 
 ## Author
 

@@ -3,7 +3,7 @@ import { computed, ref } from 'vue'
 import { Doughnut } from 'vue-chartjs'
 import { Chart as ChartJS, ArcElement, Tooltip } from 'chart.js'
 import type { Project } from '@/models/Project'
-import type { ProjectUser } from '@/composables/useProjects'
+import type { StudentProject } from '@/models/Student'
 import { useProgress, CREDITS_REQUIRED } from '@/composables/useProgress'
 import {
   generalEducationModules,
@@ -15,7 +15,7 @@ import ProjectsModal from '@/components/profile/ProjectsModal.vue'
 
 ChartJS.register(ArcElement, Tooltip)
 
-const props = defineProps<{ completedProjects: ProjectUser[], title?: string, loading?: boolean }>()
+const props = defineProps<{ completedProjects: StudentProject[], title?: string, loading?: boolean }>()
 
 const projectsRef = computed(() => props.completedProjects)
 const progress = useProgress(projectsRef)

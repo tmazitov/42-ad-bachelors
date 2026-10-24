@@ -1,5 +1,9 @@
 // Package http is the delivery layer: it maps HTTP requests to application
 // use cases and domain results to JSON. No business logic lives here.
+//
+// The frontend is served from the same origin (a reverse proxy in production,
+// the Vite dev proxy locally), so no CORS is needed and the session cookie is
+// first-party.
 package http
 
 import (
@@ -8,13 +12,13 @@ import (
 	"log/slog"
 
 	"github.com/gofiber/fiber/v3"
-	"github.com/gofiber/fiber/v3/middleware/cors"
 	"github.com/gofiber/fiber/v3/middleware/recover"
 	"github.com/gofiber/fiber/v3/middleware/requestid"
 
 	"github.com/tmazitov/42-ad-bachelors/backend/internal/application/auth"
 	"github.com/tmazitov/42-ad-bachelors/backend/internal/application/avatar"
 	"github.com/tmazitov/42-ad-bachelors/backend/internal/application/progress"
+	"github.com/tmazitov/42-ad-bachelors/backend/internal/application/students"
 	"github.com/tmazitov/42-ad-bachelors/backend/internal/config"
 	"github.com/tmazitov/42-ad-bachelors/backend/internal/domain/curriculum"
 	"github.com/tmazitov/42-ad-bachelors/backend/internal/interfaces/http/handlers"
@@ -25,6 +29,7 @@ type Deps struct {
 	DB         *sql.DB
 	Curriculum curriculum.Curriculum
 	Auth       *auth.Service
+	Students   *students.Service
 	Progress   *progress.Service
 	Avatar     *avatar.Service
 	Log        *slog.Logger
@@ -40,20 +45,24 @@ func NewServer(cfg config.Config, deps Deps) *fiber.App {
 	app.Use(recover.New())
 	app.Use(requestid.New())
 	app.Use(requestLogger(deps.Log))
-	app.Use(cors.New(cors.Config{
-		AllowOrigins:  cfg.CORSOrigins,
-		AllowHeaders:  []string{"Content-Type", "Authorization"},
-		ExposeHeaders: []string{"X-Total", "X-Page", "X-Per-Page"},
-	}))
 
 	app.Get("/healthz", handlers.Health(deps.DB))
 
+	authCfg := handlers.AuthConfig{SecureCookies: cfg.SecureCookies()}
+	signedIn := handlers.RequireSession(deps.Auth)
+
 	api := app.Group("/api/v1")
 	api.Get("/curriculum", handlers.Curriculum(deps.Curriculum))
-	api.Post("/oauth/token", handlers.OAuthToken(deps.Auth))
-	api.Post("/oauth/refresh", handlers.OAuthRefresh(deps.Auth))
-	api.Get("/leaderboard", handlers.Leaderboard(deps.Progress))
 	api.Get("/avatar", handlers.Avatar(deps.Avatar))
+
+	api.Get("/auth/login", handlers.Login(deps.Auth, authCfg))
+	api.Post("/auth/callback", handlers.Callback(deps.Auth, authCfg, deps.Log))
+	api.Post("/auth/logout", handlers.Logout(deps.Auth, authCfg))
+
+	api.Get("/me", signedIn, handlers.Me(deps.Students))
+	api.Get("/students", signedIn, handlers.SearchStudents(deps.Students))
+	api.Get("/students/:login", signedIn, handlers.Student(deps.Students))
+	api.Get("/leaderboard", signedIn, handlers.Leaderboard(deps.Progress))
 
 	return app
 }

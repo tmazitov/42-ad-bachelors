@@ -10,10 +10,10 @@ AD Bachelor's credits (132 total). **Read `docs/ARCHITECTURE.md` first** for the
 - `docs/`: project notes
 
 ## Commands (in `frontend/`)
-- `npm install` / `npm run dev`: dev server on :5173 (proxies `/v2` and `/oauth` to api.intra.42.fr)
+- `npm install` / `npm run dev`: dev server on :5173 (proxies `/api` to the backend on :8080; start the backend first)
 - `npm run build`: type-check (vue-tsc) + vite build
 - `npm run lint`: oxlint + eslint (both with `--fix`)
-- Env: copy `frontend/.env.example` → `frontend/.env`
+- No env vars needed for the frontend
 
 ## Commands (in `backend/`)
 - `make run` (loads `.env`), `make test`, `make vet`, `make build`, `make docker`
@@ -24,9 +24,10 @@ AD Bachelor's credits (132 total). **Read `docs/ARCHITECTURE.md` first** for the
   `worker/index.js` and `backend/internal/domain/curriculum/ad_bachelor.go`. Keep all three in sync until
   the frontend reads `GET /api/v1/curriculum` and the Worker is removed.
 - Credit logic: `frontend/src/composables/useProgress.ts` (each category capped; general is always 0 because there are no IDs).
-- All 42 API calls go through `apiFetch` (`frontend/src/services/apiFetch.ts`) with the user's token. Base is `VITE_42_API_BASE`.
-- `worker/index.js` (Cloudflare) handles OAuth token proxying, a generic 42 API proxy, and the hourly leaderboard in KV.
+- The browser only calls the backend (`frontend/src/services/api.ts`, same origin, httpOnly `session` cookie).
+  The backend does OAuth, stores students + validated projects in SQLite and refreshes them from 42 when stale.
+- `worker/index.js` (Cloudflare) is the legacy production backend until the VPS deploy.
 
 ## Current direction
-Replacing the Cloudflare Worker with a self-hosted **Go + Fiber + SQLite** backend that also
-tracks student progress over time. See `docs/ARCHITECTURE.md` §9 for the endpoints that must keep working.
+Deploying to a VPS (frontend + backend on one domain) and retiring the Cloudflare Worker.
+See `docs/ARCHITECTURE.md` §9 for what is done and what is left.

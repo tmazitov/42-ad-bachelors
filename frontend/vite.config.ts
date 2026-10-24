@@ -4,10 +4,7 @@ import { defineConfig } from 'vite'
 import vue from '@vitejs/plugin-vue'
 import tailwindcss from '@tailwindcss/vite'
 
-const repo = process.env.GITHUB_REPOSITORY?.split('/')[1]
-
 export default defineConfig({
-  base: process.env.GITHUB_ACTIONS && repo ? `/${repo}/` : '/',
   plugins: [tailwindcss(), vue()],
   resolve: {
     alias: {
@@ -15,9 +12,10 @@ export default defineConfig({
     },
   },
   server: {
+    // The app and the API share one origin, as in production behind the
+    // reverse proxy, so the session cookie is first-party.
     proxy: {
-      '/oauth': { target: 'https://api.intra.42.fr', changeOrigin: true },
-      '/v2': { target: 'https://api.intra.42.fr', changeOrigin: true },
+      '/api': { target: 'http://localhost:8080' },
     },
   },
 })

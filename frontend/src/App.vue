@@ -1,13 +1,19 @@
 <script setup lang="ts">
 import { RouterView } from 'vue-router'
 import AppHeader from '@/components/AppHeader.vue'
+import FullPageLoader from '@/components/FullPageLoader.vue'
+import { useAuthStore } from '@/stores/auth'
+
+const auth = useAuthStore()
 </script>
 
 <template>
 <div class="flex gap-4 justify-center p-4">
   <div class="max-w-[1160px] w-full flex flex-col gap-4">
     <AppHeader />
-    <RouterView />
+    <!-- Until the first /me answers we don't know if anyone is signed in -->
+    <FullPageLoader v-if="!auth.checked" message="Loading…" />
+    <RouterView v-else />
     <footer class="app-footer">
       <span>
         Having issues?
@@ -25,6 +31,7 @@ import AppHeader from '@/components/AppHeader.vue'
     </footer>
   </div>
 </div>
+<FullPageLoader v-if="auth.redirecting" message="Redirecting to 42…" overlay />
 </template>
 
 <style lang="css" scoped>

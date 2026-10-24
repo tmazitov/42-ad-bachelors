@@ -6,7 +6,7 @@ It replaces the Cloudflare Worker (see `../docs/ARCHITECTURE.md` §4 and §9) an
 ## Run
 
 ```sh
-cp .env.example .env   # fill in FT_CLIENT_ID / FT_CLIENT_SECRET
+cp .env.example .env   # fill in FT_CLIENT_ID / FT_CLIENT_SECRET, register the callback on 42
 make run               # http://localhost:8080
 make test
 ```
@@ -22,10 +22,16 @@ Docker: `make docker && docker run -p 8080:8080 -v ad-data:/data 42-ad-bachelors
 |---|---|---|
 | GET | `/healthz` | `{"status":"ok"}`; 503 if the database is unreachable |
 | GET | `/api/v1/curriculum` | Modules grouped by category, with credits and 42 project IDs |
-| POST | `/api/v1/oauth/token` | `{"code"}` → 42 token JSON. Registers the student. 400 if the code is invalid or expired |
-| POST | `/api/v1/oauth/refresh` | `{"refresh_token"}` → 42 token JSON. 401 if the refresh token is invalid or expired |
-| GET | `/api/v1/leaderboard` | Synced students ranked by credits (ties share a rank) |
+| GET | `/api/v1/auth/login` | Redirects to 42 to sign in (sets an `oauth_state` cookie) |
+| POST | `/api/v1/auth/callback` | `{"code","state","error"}` from the app's `/auth/callback` page; sets the httpOnly `session` cookie (204), or 400 `{"error":"denied"\|"state"\|"failed"}` |
+| POST | `/api/v1/auth/logout` | Ends the session (204) |
+| GET | `/api/v1/me` 🔒 | Signed-in student: profile, progress, validated projects |
+| GET | `/api/v1/students/:login` 🔒 | Any 42 student; fetched from 42 and stored if unknown. 404 if 42 has no such login |
+| GET | `/api/v1/students?search=&page=` 🔒 | Registered students matching login or display name, 10 per page |
+| GET | `/api/v1/leaderboard` 🔒 | Synced registered students ranked by credits (ties share a rank) |
 | GET | `/api/v1/avatar?url=` | Proxies a `https://cdn.intra.42.fr/users/...` image. The CDN requires auth, so `<img>` can't load it directly. 400 for other URLs |
+
+🔒 = needs the session cookie (401 otherwise).
 
 Errors are always JSON: `{"error": "message"}`.
 
@@ -36,15 +42,17 @@ cmd/server/            Composition root: config → DB → migrations → HTTP; 
 internal/
   domain/              Business rules. Pure Go: no Fiber, no SQL, no HTTP clients.
     curriculum/        Module, Category, Curriculum, Progress; AD Bachelor data; credit calculation
-    student/           Student aggregate (+ validated projects) + Repository port
+    student/           Student aggregate (+ validated projects, registration) + Repository port
+    session/           Sign-in sessions (hashed tokens) + Repository port
     leaderboard/       Ranking of students by credits
   application/         Use cases that orchestrate domain + ports
-    auth/              Login (code exchange + student registration), token refresh; Provider port
+    auth/              OAuth sign-in, sessions, logout; Provider port
+    students/          Profiles and search from the DB, refreshed from 42 when stale; ProfileSource port
     progress/          Project sync, leaderboard; ProjectSource port
     avatar/            42 CDN image proxy with in-memory cache; Source port
   infrastructure/      Adapters to the outside world
     ft/                42 intra API client, rate-limited, cached app token (implements auth.Provider,
-                       progress.ProjectSource, avatar.Source)
+                       students.ProfileSource, progress.ProjectSource, avatar.Source)
     sqlite/            Connection, embedded migrations, repository implementations
   interfaces/http/     Fiber app, middleware, handlers, request/response DTOs
   interfaces/scheduler/ Background jobs on an interval (progress sync)
@@ -58,11 +66,16 @@ Dependency rule: `interfaces` → `application` → `domain` ← `infrastructure
 - **Application** services take the interfaces in their constructors. `cmd/server` wires the concrete types.
 - **Handlers** convert HTTP to and from DTOs and call application services. They never touch SQL or domain internals.
 
-### Auth
-The frontend stores 42's own tokens and keeps calling the 42 API with them. The backend only holds the
-client secret, the same role the Cloudflare Worker had. The redirect URI comes from `FT_REDIRECT_URI`;
-a `redirect_uri` sent by the client is ignored. On the frontend, set
-`VITE_42_TOKEN_PROXY=http://localhost:8080/api/v1/oauth/token`; the refresh URL is derived from it.
+### Auth and freshness
+Sign-in is done entirely by the backend (`application/auth`): it exchanges the OAuth code, registers the
+student, syncs their projects and stores a session (only the SHA-256 of the cookie token). The browser never
+sees a 42 token and never calls the 42 API. The frontend must be served from `PUBLIC_URL`, the same origin as
+the API, so the cookie is first-party. 42 redirects to the app's `/auth/callback` page (it shows a loader while
+the backend signs the user in); register `PUBLIC_URL/auth/callback` on the 42 app.
+
+`application/students` serves profiles from SQLite. Data older than `STUDENT_MAX_AGE` (default 2m) is
+refreshed from 42 with the app token before responding; concurrent requests share one refresh (singleflight);
+if 42 fails, the stored data is returned. Students looked up this way are stored but not registered.
 
 ### Background sync
 `interfaces/scheduler` runs `progress.SyncAll` at startup and then every `SYNC_INTERVAL` (default `1h`; `0` turns it off).

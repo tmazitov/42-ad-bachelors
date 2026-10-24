@@ -1,5 +1,5 @@
 import { computed, type Ref } from 'vue'
-import type { ProjectUser } from '@/composables/useProjects'
+import type { StudentProject } from '@/models/Student'
 import type { Project } from '@/models/Project'
 import { generalEducationModules, standardModules, streamModules, electiveModules } from '@/utils/data'
 
@@ -17,9 +17,10 @@ export function isCompleted(project: Project, ids: Set<number>): boolean {
   return project.id.some((id) => ids.has(id))
 }
 
-export function useProgress(completedProjects: Ref<ProjectUser[]>) {
+// completedProjects are the student's validated projects.
+export function useProgress(completedProjects: Ref<StudentProject[]>) {
   return computed(() => {
-    const ids = new Set(completedProjects.value.filter((p) => p['validated?']).map((p) => p.project.id))
+    const ids = new Set(completedProjects.value.map((p) => p.project_id))
 
     const general = Math.min(
       generalEducationModules.projects

@@ -1,8 +1,11 @@
 # 42 AD Bachelor's Tracker — Architecture & Developer Notes
 
 Working notes for the project as of Oct 2026 (last feature work: May 2026).
-Goal of the next phase: replace the Cloudflare Worker with a self-hosted
-**Go + Fiber + SQLite** backend that also tracks student progress.
+
+**Current state:** the browser talks only to the self-hosted **Go + Fiber + SQLite** backend (`backend/`) under
+`/api/v1`, on the same origin. The backend signs users in with 42 OAuth, stores students and their validated
+projects, and refreshes them from 42 when stale. The browser never calls the 42 API and never holds a 42 token.
+Sections 4 and 7 describe the legacy Cloudflare Worker and GitHub Pages deploy, kept until production moves to the VPS.
 
 ---
 
@@ -137,41 +140,49 @@ Response shape consumed by `LeaderboardView.vue`:
 
 ---
 
-## 5. Auth flow (current)
+## 5. Auth flow and data access
 
-1. `redirectToLogin()` → `https://api.intra.42.fr/oauth/authorize?client_id&redirect_uri&response_type=code&scope=public projects`
-2. 42 redirects to `/auth/callback?code=…` → `AuthCallbackView` → `exchangeCode(code)`
-   - **Dev** (no `VITE_42_TOKEN_PROXY`): POSTs directly to `/oauth/token` through the Vite dev proxy, sending the client secret from `frontend/.env`.
-   - **Prod**: POSTs JSON to the Worker.
-3. `auth.setTokens()` stores `42_access_token`, `42_refresh_token`, and `42_expires_at` in **localStorage** and schedules a refresh 5 minutes before expiry.
-4. `fetchUser()` calls `/v2/me`. On 401 it refreshes once, then logs out.
-5. The frontend uses the **user's own 42 token** for all 42 API calls. The Worker's app token is used only by the leaderboard cron.
+1. "Log In" (shows a "Redirecting to 42…" overlay) → `GET /api/v1/auth/login`: the backend sets a short-lived
+   `oauth_state` cookie and redirects to 42's authorize page with `redirect_uri = FT_REDIRECT_URI`
+   (default `PUBLIC_URL/auth/callback`; it must be registered on the 42 app).
+2. 42 → the SPA page `/auth/callback?code&state` ("Signing you in…" loader), which posts the query to
+   `POST /api/v1/auth/callback`. The backend checks the state against the cookie, exchanges the code, reads
+   `/v2/me` with the user's token, saves the student as **registered**, syncs their validated projects and
+   creates a session: httpOnly `session` cookie (SameSite=Lax, Secure on https, `SESSION_TTL`, default 30 days),
+   204. Failures return 400 `{"error": "denied"|"state"|"failed"}` and the SPA shows `/?login_error=…`.
+   The 42 user token is discarded after the login.
+3. The SPA calls `GET /api/v1/me` on start (router guard, "Loading…" until it answers). `/profile/:login` and
+   `/leaderboard` require a session.
+4. Reads: `/api/v1/me`, `/api/v1/students/:login` return stored data. If it is older than `STUDENT_MAX_AGE`
+   (default 2m) it is refreshed from 42 **before** responding, with the app token (`client_credentials`);
+   concurrent requests for one student share one refresh; if 42 fails, stored data is served. Unknown logins are
+   fetched and stored but **not registered** (not ranked, searched or background-synced).
+5. Search (`/api/v1/students?search=`) only covers registered students, from the DB.
+6. Only validated projects are stored, so in-progress projects and location are not shown.
+7. `POST /api/v1/auth/logout` deletes the session. Expired sessions are purged by the hourly job.
 
 ---
 
 ## 6. Environment variables
 
-See `frontend/.env.example`. Vite reads `.env*` files from `frontend/`.
+The frontend needs **none** (see `frontend/.env.example`). Backend: see `backend/.env.example`.
 
-| Var | Where | Used by | Notes |
-|---|---|---|---|
-| `VITE_42_CLIENT_ID` | frontend | `oauth.ts` | public, needed for the authorize URL |
-| `VITE_42_CLIENT_SECRET` | frontend (**dev only**) | `oauth.ts` | only used when `VITE_42_TOKEN_PROXY` is unset. `VITE_*` values are public, see §8 |
-| `VITE_42_REDIRECT_URI` | frontend | `oauth.ts` | must match the 42 app's redirect URI, e.g. `http://localhost:5173/auth/callback` |
-| `VITE_42_API_BASE` | frontend | all API calls | empty in dev (Vite proxy handles `/v2` and `/oauth`). In prod it is the Worker URL |
-| `VITE_42_TOKEN_PROXY` | frontend | `oauth.ts` | full URL ending in `/oauth/token`. If set, exchange and refresh go through it |
-| `VITE_BACKEND_URL` | frontend | `LeaderboardView.vue` | Go backend base URL, e.g. `http://localhost:8080` |
-| `GITHUB_ACTIONS`, `GITHUB_REPOSITORY` | build | `vite.config.ts` | sets `base` to `/<repo>/` for GitHub Pages |
-| `CLIENT_ID`, `CLIENT_SECRET` | Worker secrets | `worker/index.js` | |
-| `CAMPUS_ID` | Worker var | unused | |
+| Var | Default | Notes |
+|---|---|---|
+| `FT_CLIENT_ID`, `FT_CLIENT_SECRET` | required | 42 OAuth app credentials |
+| `PUBLIC_URL` | `http://localhost:5173` | where users open the app; cookies are Secure when https |
+| `FT_REDIRECT_URI` | `PUBLIC_URL/auth/callback` | the SPA callback page; must be registered on the 42 app |
+| `SESSION_TTL` | `720h` | sign-in lifetime |
+| `STUDENT_MAX_AGE` | `2m` | stored data older than this is refreshed before an API response |
+| `SYNC_INTERVAL` / `SYNC_MAX_AGE` | `1h` / `24h` | background sync of registered students |
+| `FT_RATE_PER_SECOND` / `FT_RATE_PER_HOUR` | `2` / `1200` | 42 API limits shared by all backend calls |
+| `HTTP_ADDR`, `DATABASE_PATH`, `LOG_LEVEL` | `:8080`, `./data/app.db`, `info` | |
 
-GitHub secrets used by CI: `VITE_42_CLIENT_ID`, `VITE_42_CLIENT_SECRET`, `VITE_42_REDIRECT_URI`,
-`VITE_42_TOKEN_PROXY` (Worker base URL **without** a path; CI appends `/oauth/token`),
+Local dev: run the backend (`make run` in `backend/`) and `npm run dev` in `frontend/`. Vite proxies `/api`
+to `localhost:8080`, so the app and API share the `localhost:5173` origin like in production.
+
+Legacy (Worker / GitHub Pages only): Worker secrets `CLIENT_ID`, `CLIENT_SECRET`; GitHub secrets `VITE_42_*`,
 `CLOUDFLARE_API_TOKEN`, `CLOUDFLARE_ACCOUNT_ID`.
-
-Local dev: `frontend/.env` with `VITE_42_CLIENT_ID`, `VITE_42_CLIENT_SECRET`, `VITE_42_REDIRECT_URI`; leave the
-API base and proxy empty. The leaderboard **does not work in dev**, because there is no Worker and the
-Vite proxy does not forward `/leaderboard`.
 
 ---
 
@@ -208,25 +219,18 @@ but CI env vars override it.
 
 ---
 
-## 9. Migration notes: Worker → Go/Fiber/SQLite backend
+## 9. Migration status: Worker → Go/Fiber/SQLite backend
 
-Things the backend must provide so the frontend keeps working, plus the planned additions:
+- ✅ OAuth sign-in with server-side sessions (`/api/v1/auth/*`); no 42 tokens in the browser.
+- ✅ Leaderboard (`/api/v1/leaderboard`, now behind the session) and the hourly background sync with rate limits.
+- ✅ The SPA reads everything from the backend (`/me`, `/students/:login`, `/students?search=`); no 42 API passthrough.
+- ✅ Avatars through `/api/v1/avatar` (the 42 CDN requires auth).
+- ⏳ Production on the VPS: one domain, reverse proxy `/api` → backend and everything else → `frontend/dist`
+  with SPA fallback (`index.html`). The GitHub Pages workflow (`.github/workflows/deploy.yml`) and the Worker
+  do not work with this setup.
+- ⏳ Import the ~60 students registered in the Worker's KV (`app_users`; has logins, not 42 IDs).
+- ⏳ Frontend still holds its own copy of the curriculum (`utils/data.ts`) and computes progress for the
+  projects table; `/api/v1/curriculum` could replace it.
 
-**Must replace**
-- ✅ `POST /oauth/token` and `POST /oauth/refresh`: done as `/api/v1/oauth/{token,refresh}` in `backend/`. They have the same
-  response shape, and the frontend works unchanged with `VITE_42_TOKEN_PROXY=<backend>/api/v1/oauth/token`.
-- ✅ `GET /leaderboard`: done as `/api/v1/leaderboard` (same shape plus `rank`, `synced_at`).
-- ✅ Hourly refresh: done by `backend/internal/interfaces/scheduler`, which runs `progress.SyncAll` with a rate-limited app token.
-- 42 API access for the SPA. Options: (a) keep a narrow `/v2/*` passthrough, possibly restricted to an
-  allowlist of the GETs the SPA uses (`/v2/me`, `/v2/users`, `/v2/users/:x`, `/v2/users/:x/projects_users`,
-  `/v2/cursus/21/projects`); or (b) move data fetching into backend endpoints that serve from SQLite.
-- CORS for the frontend origin. Expose `X-Total`, `X-Page`, and `X-Per-Page` if passthrough is kept.
-
-**SQLite (sketch)**
-- `users` (id, login, display_name, image, registered_at, last_synced_at)
-- `project_users` (user_id, project_id, validated, final_mark, status, marked_at): raw 42 data
-- `progress_snapshots` (user_id, general, standard, stream, elective, total, percentage, taken_at): progress history for tracking over time
-- Curriculum as Go data or seed tables, a **single source of truth** (see §3).
-
-**Then remove**: `worker/`, `wrangler.toml`, the `deploy-worker` CI job, the Cloudflare secrets, the `.wrangler/` gitignore entry,
-and the `frontend/.env.production` Worker placeholder. Also update `VITE_42_API_BASE` / `VITE_42_TOKEN_PROXY` to point at the new backend.
+**Then remove**: `worker/`, `wrangler.toml`, the Pages/Worker CI jobs, the Cloudflare secrets, the `.wrangler/`
+gitignore entry, and the GitHub Pages SPA redirect in `frontend/index.html` and `frontend/public/404.html`.

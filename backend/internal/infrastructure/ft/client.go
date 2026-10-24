@@ -4,6 +4,7 @@ package ft
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"io"
 	"net/http"
@@ -74,6 +75,19 @@ var (
 	_ progress.ProjectSource = (*Client)(nil)
 )
 
+// AuthorizeURL is the 42 page where the user approves the sign-in; 42 then
+// redirects to RedirectURI with a code and the given state.
+func (c *Client) AuthorizeURL(state string) string {
+	q := url.Values{
+		"client_id":     {c.cfg.ClientID},
+		"redirect_uri":  {c.cfg.RedirectURI},
+		"response_type": {"code"},
+		"scope":         {"public projects"},
+		"state":         {state},
+	}
+	return c.cfg.BaseURL + "/oauth/authorize?" + q.Encode()
+}
+
 type tokenResponse struct {
 	AccessToken  string `json:"access_token"`
 	TokenType    string `json:"token_type"`
@@ -88,13 +102,6 @@ func (c *Client) ExchangeCode(ctx context.Context, code string) (auth.Token, err
 		"grant_type":   {"authorization_code"},
 		"code":         {code},
 		"redirect_uri": {c.cfg.RedirectURI},
-	})
-}
-
-func (c *Client) RefreshToken(ctx context.Context, refreshToken string) (auth.Token, error) {
-	return c.requestToken(ctx, url.Values{
-		"grant_type":    {"refresh_token"},
-		"refresh_token": {refreshToken},
 	})
 }
 
@@ -115,10 +122,12 @@ func (c *Client) requestToken(ctx context.Context, form url.Values) (auth.Token,
 	return auth.Token(body), nil
 }
 
-type meResponse struct {
+type userResponse struct {
 	ID          int    `json:"id"`
 	Login       string `json:"login"`
 	DisplayName string `json:"displayname"`
+	Staff       bool   `json:"staff?"`
+	Alumni      bool   `json:"alumni?"`
 	Image       struct {
 		Link     string `json:"link"`
 		Versions struct {
@@ -127,23 +136,42 @@ type meResponse struct {
 	} `json:"image"`
 }
 
-func (c *Client) Profile(ctx context.Context, accessToken string) (auth.Profile, error) {
-	req, err := http.NewRequestWithContext(ctx, http.MethodGet, c.cfg.BaseURL+"/v2/me", nil)
+// Profile returns the user who owns accessToken.
+func (c *Client) Profile(ctx context.Context, accessToken string) (student.Student, error) {
+	return c.user(ctx, accessToken, "/v2/me")
+}
+
+// UserByLogin returns a 42 user by login, or student.ErrNotFound.
+func (c *Client) UserByLogin(ctx context.Context, accessToken, login string) (student.Student, error) {
+	return c.user(ctx, accessToken, "/v2/users/"+url.PathEscape(login))
+}
+
+func (c *Client) user(ctx context.Context, accessToken, path string) (student.Student, error) {
+	req, err := http.NewRequestWithContext(ctx, http.MethodGet, c.cfg.BaseURL+path, nil)
 	if err != nil {
-		return auth.Profile{}, err
+		return student.Student{}, err
 	}
 	req.Header.Set("Authorization", "Bearer "+accessToken)
 
-	var me meResponse
-	if _, err := c.do(req, &me); err != nil {
-		return auth.Profile{}, fmt.Errorf("42 /v2/me: %w", err)
+	var u userResponse
+	if _, err := c.do(req, &u); err != nil {
+		var se *statusError
+		if errors.As(err, &se) && se.Code == http.StatusNotFound {
+			return student.Student{}, student.ErrNotFound
+		}
+		return student.Student{}, fmt.Errorf("42 %s: %w", path, err)
 	}
 
-	image := me.Image.Versions.Medium
+	image := u.Image.Versions.Medium
 	if image == "" {
-		image = me.Image.Link
+		image = u.Image.Link
 	}
-	return auth.Profile{ID: me.ID, Login: me.Login, DisplayName: me.DisplayName, ImageURL: image}, nil
+	s, err := student.New(student.ID(u.ID), u.Login, u.DisplayName, image)
+	if err != nil {
+		return student.Student{}, fmt.Errorf("42 %s: %w", path, err)
+	}
+	s.Staff, s.Alumni = u.Staff, u.Alumni
+	return s, nil
 }
 
 const (
@@ -156,7 +184,8 @@ type projectUserResponse struct {
 	Validated *bool      `json:"validated?"`
 	MarkedAt  *time.Time `json:"marked_at"`
 	Project   struct {
-		ID int `json:"id"`
+		ID   int    `json:"id"`
+		Slug string `json:"slug"`
 	} `json:"project"`
 }
 
@@ -183,7 +212,7 @@ func (c *Client) CompletedProjects(ctx context.Context, accessToken string, id s
 			if pu.Validated == nil || !*pu.Validated {
 				continue
 			}
-			cp := student.CompletedProject{ProjectID: curriculum.ProjectID(pu.Project.ID)}
+			cp := student.CompletedProject{ProjectID: curriculum.ProjectID(pu.Project.ID), Slug: pu.Project.Slug}
 			if pu.FinalMark != nil {
 				cp.FinalMark = *pu.FinalMark
 			}
@@ -280,7 +309,17 @@ func decode(res *http.Response, out any) (http.Header, error) {
 		if oauthErr.Error == "invalid_grant" {
 			return nil, auth.ErrInvalidGrant
 		}
-		return nil, fmt.Errorf("status %d: %s %s", res.StatusCode, oauthErr.Error, oauthErr.Description)
+		return nil, &statusError{Code: res.StatusCode, Message: strings.TrimSpace(oauthErr.Error + " " + oauthErr.Description)}
 	}
 	return res.Header, json.Unmarshal(body, out)
+}
+
+// statusError is a non-2xx response from the 42 API.
+type statusError struct {
+	Code    int
+	Message string
+}
+
+func (e *statusError) Error() string {
+	return fmt.Sprintf("status %d: %s", e.Code, e.Message)
 }

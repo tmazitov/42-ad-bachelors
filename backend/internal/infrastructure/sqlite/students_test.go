@@ -3,6 +3,7 @@ package sqlite
 import (
 	"context"
 	"database/sql"
+	"errors"
 	"path/filepath"
 	"testing"
 	"time"
@@ -24,26 +25,14 @@ func openTestDB(t *testing.T) *sql.DB {
 	return db
 }
 
-func TestStudentSaveUpserts(t *testing.T) {
-	ctx := context.Background()
-	db := openTestDB(t)
-	repo := NewStudentRepository(db)
+var registered = time.Date(2026, 10, 1, 0, 0, 0, 0, time.UTC)
 
-	if err := repo.Save(ctx, student.Student{ID: 1, Login: "jdoe", DisplayName: "John"}); err != nil {
-		t.Fatal(err)
-	}
-	if err := repo.Save(ctx, student.Student{ID: 1, Login: "jdoe", DisplayName: "John Doe", ImageURL: "http://img"}); err != nil {
-		t.Fatal(err)
-	}
-
-	var count int
-	var name string
-	var image sql.NullString
-	if err := db.QueryRowContext(ctx, `SELECT COUNT(*), MAX(display_name), MAX(image_url) FROM students`).Scan(&count, &name, &image); err != nil {
-		t.Fatal(err)
-	}
-	if count != 1 || name != "John Doe" || image.String != "http://img" {
-		t.Errorf("count=%d name=%q image=%q", count, name, image.String)
+func save(t *testing.T, repo *StudentRepository, students ...student.Student) {
+	t.Helper()
+	for _, s := range students {
+		if err := repo.Save(context.Background(), s); err != nil {
+			t.Fatal(err)
+		}
 	}
 }
 
@@ -54,81 +43,139 @@ func TestMigrateIsIdempotent(t *testing.T) {
 	}
 }
 
-func TestReplaceProjectsAndListSynced(t *testing.T) {
+func TestSaveUpsertsAndKeepsRegistration(t *testing.T) {
 	ctx := context.Background()
 	repo := NewStudentRepository(openTestDB(t))
 
-	for _, s := range []student.Student{{ID: 1, Login: "alice", DisplayName: "Alice"}, {ID: 2, Login: "bob", DisplayName: "Bob"}} {
-		if err := repo.Save(ctx, s); err != nil {
-			t.Fatal(err)
-		}
-	}
+	save(t, repo,
+		student.Student{ID: 1, Login: "jdoe", DisplayName: "John", RegisteredAt: registered},
+		// A later profile refresh without RegisteredAt must not unregister.
+		student.Student{ID: 1, Login: "jdoe", DisplayName: "John Doe", ImageURL: "http://img", Alumni: true},
+	)
 
-	// bob is registered but never synced: not listed.
-	list, err := repo.ListSynced(ctx)
-	if err != nil || len(list) != 0 {
-		t.Fatalf("ListSynced before sync = %+v, %v", list, err)
+	s, err := repo.FindByID(ctx, 1)
+	if err != nil {
+		t.Fatal(err)
 	}
+	if s.DisplayName != "John Doe" || s.ImageURL != "http://img" || !s.Alumni || s.Staff {
+		t.Errorf("profile = %+v", s)
+	}
+	if !s.RegisteredAt.Equal(registered) {
+		t.Errorf("registered at %v, want %v", s.RegisteredAt, registered)
+	}
+}
+
+func TestReplaceProjectsAndFind(t *testing.T) {
+	ctx := context.Background()
+	repo := NewStudentRepository(openTestDB(t))
+	save(t, repo, student.Student{ID: 1, Login: "alice", DisplayName: "Alice", RegisteredAt: registered})
 
 	marked := time.Date(2024, 3, 1, 10, 0, 0, 0, time.UTC)
-	synced := time.Date(2026, 10, 24, 12, 0, 0, 0, time.UTC)
+	synced := time.Date(2026, 10, 24, 12, 0, 0, 123456789, time.UTC)
 	if err := repo.ReplaceProjects(ctx, 1, []student.CompletedProject{
-		{ProjectID: 1314, FinalMark: 125, MarkedAt: marked},
+		{ProjectID: 1314, Slug: "42cursus-libft", FinalMark: 125, MarkedAt: marked},
 		{ProjectID: 1327, FinalMark: 100},
 	}, synced.Add(-time.Hour)); err != nil {
 		t.Fatal(err)
 	}
 	// A second sync replaces the first one.
 	if err := repo.ReplaceProjects(ctx, 1, []student.CompletedProject{
-		{ProjectID: 1314, FinalMark: 125, MarkedAt: marked},
+		{ProjectID: 1314, Slug: "42cursus-libft", FinalMark: 125, MarkedAt: marked},
 	}, synced); err != nil {
 		t.Fatal(err)
 	}
 
-	list, err = repo.ListSynced(ctx)
+	s, err := repo.FindByLogin(ctx, "alice")
 	if err != nil {
 		t.Fatal(err)
 	}
-	if len(list) != 1 || list[0].Login != "alice" || !list[0].ProjectsSyncedAt.Equal(synced) {
-		t.Fatalf("list = %+v", list)
+	if !s.ProjectsSyncedAt.Equal(synced) {
+		t.Errorf("synced at %v, want %v", s.ProjectsSyncedAt, synced)
 	}
-	if p := list[0].Projects; len(p) != 1 || p[0].ProjectID != 1314 || p[0].FinalMark != 125 || !p[0].MarkedAt.Equal(marked) {
+	if p := s.Projects; len(p) != 1 || p[0].ProjectID != 1314 || p[0].Slug != "42cursus-libft" ||
+		p[0].FinalMark != 125 || !p[0].MarkedAt.Equal(marked) {
 		t.Errorf("projects = %+v", p)
 	}
-}
 
-func TestReplaceProjectsUnknownStudent(t *testing.T) {
-	repo := NewStudentRepository(openTestDB(t))
-	if err := repo.ReplaceProjects(context.Background(), 99, nil, time.Now()); err == nil {
-		t.Fatal("want error for unknown student")
+	if _, err := repo.FindByLogin(ctx, "nobody"); !errors.Is(err, student.ErrNotFound) {
+		t.Errorf("FindByLogin(nobody) err = %v, want ErrNotFound", err)
+	}
+	if err := repo.ReplaceProjects(ctx, 99, nil, synced); !errors.Is(err, student.ErrNotFound) {
+		t.Errorf("ReplaceProjects(99) err = %v, want ErrNotFound", err)
 	}
 }
 
-func TestListReturnsAllRegistered(t *testing.T) {
+func TestListsOnlyIncludeRegistered(t *testing.T) {
 	ctx := context.Background()
 	repo := NewStudentRepository(openTestDB(t))
-	for _, s := range []student.Student{{ID: 2, Login: "bob", DisplayName: "Bob"}, {ID: 1, Login: "alice", DisplayName: "Alice", ImageURL: "http://img"}} {
-		if err := repo.Save(ctx, s); err != nil {
+	save(t, repo,
+		student.Student{ID: 1, Login: "alice", DisplayName: "Alice", RegisteredAt: registered},
+		student.Student{ID: 2, Login: "bob", DisplayName: "Bob", RegisteredAt: registered},
+		student.Student{ID: 3, Login: "viewer", DisplayName: "Only Viewed"},
+	)
+	now := time.Now()
+	for _, id := range []student.ID{1, 3} {
+		if err := repo.ReplaceProjects(ctx, id, []student.CompletedProject{{ProjectID: 1314}}, now); err != nil {
 			t.Fatal(err)
 		}
 	}
 
-	synced := time.Date(2026, 10, 24, 12, 0, 0, 123456789, time.UTC)
-	if err := repo.ReplaceProjects(ctx, 2, nil, synced); err != nil {
-		t.Fatal(err)
-	}
-
-	list, err := repo.List(ctx)
+	all, err := repo.ListRegistered(ctx)
 	if err != nil {
 		t.Fatal(err)
 	}
-	if len(list) != 2 || list[0].Login != "alice" || list[0].ImageURL != "http://img" || list[1].Login != "bob" {
-		t.Fatalf("list = %+v", list)
+	if len(all) != 2 || all[0].Login != "alice" || all[1].Login != "bob" {
+		t.Errorf("ListRegistered = %+v", all)
 	}
-	if !list[0].ProjectsSyncedAt.IsZero() {
-		t.Errorf("alice synced at %v, want zero (never synced)", list[0].ProjectsSyncedAt)
+	if all[0].ProjectsSyncedAt.IsZero() || !all[1].ProjectsSyncedAt.IsZero() {
+		t.Errorf("synced times = %v, %v", all[0].ProjectsSyncedAt, all[1].ProjectsSyncedAt)
 	}
-	if !list[1].ProjectsSyncedAt.Equal(synced) {
-		t.Errorf("bob synced at %v, want %v", list[1].ProjectsSyncedAt, synced)
+
+	synced, err := repo.ListSynced(ctx)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(synced) != 1 || synced[0].Login != "alice" || len(synced[0].Projects) != 1 {
+		t.Errorf("ListSynced = %+v", synced)
+	}
+}
+
+func TestSearch(t *testing.T) {
+	ctx := context.Background()
+	repo := NewStudentRepository(openTestDB(t))
+	save(t, repo,
+		student.Student{ID: 1, Login: "anna", DisplayName: "Anna Smith", RegisteredAt: registered},
+		student.Student{ID: 2, Login: "bob", DisplayName: "Bob Annan", RegisteredAt: registered},
+		student.Student{ID: 3, Login: "carl", DisplayName: "Carl", RegisteredAt: registered},
+		student.Student{ID: 4, Login: "annie", DisplayName: "Viewed Only"},
+		student.Student{ID: 5, Login: "x_y", DisplayName: "Under Score", RegisteredAt: registered},
+	)
+
+	tests := []struct {
+		query  string
+		limit  int
+		offset int
+		want   []string
+		total  int
+	}{
+		{"ann", 10, 0, []string{"anna", "bob"}, 2}, // login or display name, case-insensitive
+		{"ANN", 1, 1, []string{"bob"}, 2},          // paging
+		{"_", 10, 0, []string{"x_y"}, 1},           // LIKE wildcards are literal
+		{"zzz", 10, 0, nil, 0},
+	}
+	for _, tt := range tests {
+		got, total, err := repo.Search(ctx, tt.query, tt.limit, tt.offset)
+		if err != nil {
+			t.Fatal(err)
+		}
+		var logins []string
+		for _, s := range got {
+			logins = append(logins, s.Login)
+		}
+		if total != tt.total || len(logins) != len(tt.want) || (len(logins) > 0 && logins[0] != tt.want[0]) ||
+			(len(logins) > 1 && logins[1] != tt.want[1]) {
+			t.Errorf("Search(%q, %d, %d) = %v (total %d), want %v (total %d)",
+				tt.query, tt.limit, tt.offset, logins, total, tt.want, tt.total)
+		}
 	}
 }
