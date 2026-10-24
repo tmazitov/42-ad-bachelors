@@ -1,7 +1,7 @@
 <script setup lang="ts">
 import { computed, ref } from 'vue'
 import { Dialog, DataTable, Column, InputText } from 'primevue'
-import type { Project } from '@/models/Project'
+import type { Project, Team } from '@/models/Project'
 import type { ProjectUser } from '@/composables/useProjects'
 import { isCompleted } from '@/composables/useProgress'
 
@@ -40,12 +40,19 @@ const rows = computed(() =>
       code: p.code,
       name: p.name,
       credit: p.credit,
+      team: p.team,
       done: isCompleted(p, completedIds.value),
       trackable: p.id !== null,
       url,
     }
   }),
 )
+
+const TEAM_LABELS: Record<Team, { label: string; icon: string }> = {
+  solo: { label: 'Solo', icon: 'pi pi-user' },
+  group: { label: 'Group', icon: 'pi pi-users' },
+  mixed: { label: 'Solo / Group', icon: 'pi pi-user-plus' },
+}
 
 const progressPercent = computed(() => Math.min((props.earned / props.max) * 100, 100))
 
@@ -114,6 +121,15 @@ const sortOrder = ref<1 | -1>(1)
           <span v-else>{{ data.name }}</span>
         </template>
       </Column>
+      <Column field="team" header="Type" :sortable="true" style="width: 8rem">
+        <template #body="{ data }">
+          <span v-if="data.team" class="team-badge" :class="`team-badge--${data.team}`">
+            <i :class="TEAM_LABELS[data.team as Team].icon" />
+            {{ TEAM_LABELS[data.team as Team].label }}
+          </span>
+          <span v-else class="text-gray-300 text-xs">—</span>
+        </template>
+      </Column>
       <Column field="credit" header="Cr." :sortable="true" style="width: 4.5rem">
         <template #body="{ data }">
           <span :class="data.credit > 0 ? 'font-medium' : 'text-gray-300'">
@@ -132,6 +148,38 @@ const sortOrder = ref<1 | -1>(1)
 </template>
 
 <style scoped>
+.team-badge {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.3rem;
+  padding: 0.1rem 0.5rem;
+  border-radius: 999px;
+  font-size: 0.72rem;
+  font-weight: 500;
+  white-space: nowrap;
+  border: 1px solid var(--card-border);
+}
+
+.team-badge i {
+  font-size: 0.7rem;
+}
+
+.team-badge--solo {
+  color: #0ea5e9;
+  border-color: color-mix(in srgb, #0ea5e9 35%, transparent);
+  background: color-mix(in srgb, #0ea5e9 8%, transparent);
+}
+
+.team-badge--group {
+  color: #a855f7;
+  border-color: color-mix(in srgb, #a855f7 35%, transparent);
+  background: color-mix(in srgb, #a855f7 8%, transparent);
+}
+
+.team-badge--mixed {
+  color: var(--p-text-muted-color, #9ca3af);
+}
+
 .project-link {
   color: inherit;
   text-decoration: none;

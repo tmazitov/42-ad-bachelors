@@ -30,10 +30,16 @@ func TestEvaluate(t *testing.T) {
 			total:     3,
 		},
 		{
-			name:      "ft_transcendence counts for CCP 161 and BAI 498",
+			name:      "ft_transcendence counts for CCP 161 only, not the capstone",
 			validated: NewProjectSet(1337),
-			want:      map[Category]int{Standard: 8},
-			total:     8,
+			want:      map[Category]int{Standard: 4},
+			total:     4,
+		},
+		{
+			name:      "Work Experience I completes the internship",
+			validated: NewProjectSet(1638),
+			want:      map[Category]int{Standard: 4},
+			total:     4,
 		},
 		{
 			name: "category credits are capped",
@@ -63,5 +69,16 @@ func TestEvaluatePercentage(t *testing.T) {
 	got := ADBachelor().Evaluate(NewProjectSet(1314)) // Libft, 4 credits
 	if want := 3.0; got.Percentage != want {          // 4/132 = 3.03 → 3.0
 		t.Errorf("percentage = %v, want %v", got.Percentage, want)
+	}
+}
+
+func TestTeamSetForTrackableModules(t *testing.T) {
+	for _, m := range ADBachelor().Modules() {
+		if m.Trackable() && m.Team == TeamUnknown {
+			t.Errorf("module %s is trackable but has no team", m.Code)
+		}
+		if !m.Trackable() && m.Team != TeamUnknown {
+			t.Errorf("module %s is not trackable but has team %q", m.Code, m.Team)
+		}
 	}
 }

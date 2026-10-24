@@ -14,8 +14,8 @@ const STANDARD = [
   [2267, 2], [2295, 2], [1453, 4], [1457, 4],
   [2551, 4], [1460, 4], [1391, 3], [2372, 4],
   [1382, 3], [2077, 4], [2623, 2],
-  [1337, 4], // BAI 498 — same project ID as CCP 161 (ft_transcendence)
-  // BAI 499 has no API project ID
+  [1638, 4], // BAI 499 Internship = Work Experience I
+  // BAI 498 Senior Capstone Project is not tracked through the API
 ]
 const STREAM = [
   [1387, 4], [1436, 3], [1386, 3], [1463, 3], [1462, 3],

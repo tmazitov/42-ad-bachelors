@@ -11,6 +11,7 @@ type moduleResponse struct {
 	Name       string `json:"name"`
 	Credits    int    `json:"credits"`
 	ProjectIDs []int  `json:"project_ids"`
+	Team       string `json:"team,omitempty"`
 }
 
 type categoryResponse struct {
@@ -38,6 +39,7 @@ func Curriculum(c curriculum.Curriculum) fiber.Handler {
 			Name:       m.Name,
 			Credits:    m.Credits,
 			ProjectIDs: ids,
+			Team:       string(m.Team),
 		})
 	}
 

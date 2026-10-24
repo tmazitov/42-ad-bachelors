@@ -83,7 +83,11 @@ Chart.js 4 / vue-chartjs. Node `^20.19 || >=22.12` (see `frontend/.nvmrc`). Lint
   - `number[]`: alternatives. Any one of them validated counts, e.g. "Minitalk **or** Pipex", or old and new versions of the same project.
   - `null`: not trackable through the API (GEN seminars, BAI 499 Internship).
 - A project counts as completed when its `projects_users` entry has `validated? == true`.
-- **ID 1337 (ft_transcendence) appears twice**: as CCP 161 and as BAI 498 (Capstone). Validating it gives 8 credits. This is intentional and mirrored in the Worker.
+- BAI 498 (Senior Capstone Project) is **not tracked** (no project ID). It used to share ID 1337 with CCP 161 (ft_transcendence).
+- BAI 499 (Internship) is completed by **Work Experience I** (ID 1638).
+- EMP 101 is the `ft_resume` project (ID 2623; it was renamed from `42_collaborative_resume` on intra).
+- Each module has a `team` value (`solo` / `group` / `mixed`) taken from the 42 API project sessions (Abu Dhabi campus 43 first,
+  then cursus 21). `mixed` means the alternatives or sessions differ. It is shown in the projects table.
 - 42 cursus ID **21** = 42cursus (used by project search).
 
 ⚠️ **The curriculum is duplicated** in `worker/index.js` (`STANDARD` / `STREAM` / `ELECTIVE` arrays).

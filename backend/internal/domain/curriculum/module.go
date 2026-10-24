@@ -21,16 +21,28 @@ func (s ProjectSet) Has(id ProjectID) bool {
 	return ok
 }
 
+// Team tells whether a module's project is done alone or in a group on intra.
+type Team string
+
+const (
+	TeamUnknown Team = "" // not tracked through the API
+	Solo        Team = "solo"
+	Group       Team = "group"
+	// Mixed: the module's alternative projects, or a project's sessions, differ.
+	Mixed Team = "mixed"
+)
+
 // Module is a bachelor course worth a number of credits. It is completed when
 // any of its ProjectIDs is validated (alternatives such as "Minitalk or Pipex",
 // or old and new versions of the same project). A module without ProjectIDs
-// cannot be tracked through the 42 API (e.g. seminars, internship).
+// cannot be tracked through the 42 API (e.g. seminars, the capstone project).
 type Module struct {
 	Code       string
 	Name       string
 	Credits    int
 	Category   Category
 	ProjectIDs []ProjectID
+	Team       Team
 }
 
 // Trackable reports whether completion can be derived from 42 projects.
