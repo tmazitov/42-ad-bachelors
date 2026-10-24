@@ -14,7 +14,8 @@ make test
 Go 1.26+ is required. With `GOTOOLCHAIN=auto` (the default), an older `go` downloads it automatically.
 The SQLite driver is pure Go (`modernc.org/sqlite`), so no CGO or system libsqlite is needed.
 
-Docker: `make docker && docker run -p 8080:8080 -v ad-data:/data 42-ad-bachelors-backend`
+Docker: in production use the root `compose.yaml` (backend + Caddy for the frontend and HTTPS). The image's
+`/server healthcheck` subcommand probes `/healthz` for the container health check.
 
 ## Endpoints
 

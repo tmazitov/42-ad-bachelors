@@ -1,0 +1,4 @@
+bin/
+data/
+.env
+*.db

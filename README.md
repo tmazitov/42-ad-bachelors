@@ -26,8 +26,23 @@ Log in with your 42 account to see which modules you've completed, how many cred
    npm run dev            # http://localhost:5173
    ```
 
-In production, serve `frontend/dist` and the backend on one domain (reverse proxy `/api` → backend) and set
-`PUBLIC_URL` to that domain.
+## Deploy (VPS, Docker Compose)
+
+`compose.yaml` runs two containers: **web** (Caddy serving the built frontend, proxying `/api` to the backend,
+with automatic HTTPS) and **backend** (Go + SQLite on a named volume, not exposed).
+
+1. Point your domain's DNS at the VPS and open ports 80 and 443.
+2. Register `https://<your-domain>/auth/callback` as the redirect URI of the 42 app.
+3. Configure and start:
+   ```sh
+   cp .env.example .env                   # SITE_ADDRESS=<your-domain>, PUBLIC_URL=https://<your-domain>
+   cp backend/.env.example backend/.env   # FT_CLIENT_ID, FT_CLIENT_SECRET
+   docker compose up -d --build
+   ```
+4. Update: `git pull && docker compose up -d --build`. Logs: `docker compose logs -f backend`.
+
+The database lives in the `backend-data` volume (`/data/app.db` in the container); back it up with e.g.
+`docker compose cp backend:/data/app.db ./backup.db`.
 
 ## Author
 

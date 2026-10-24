@@ -225,9 +225,10 @@ but CI env vars override it.
 - ✅ Leaderboard (`/api/v1/leaderboard`, now behind the session) and the hourly background sync with rate limits.
 - ✅ The SPA reads everything from the backend (`/me`, `/students/:login`, `/students?search=`); no 42 API passthrough.
 - ✅ Avatars through `/api/v1/avatar` (the 42 CDN requires auth).
-- ⏳ Production on the VPS: one domain, reverse proxy `/api` → backend and everything else → `frontend/dist`
-  with SPA fallback (`index.html`). The GitHub Pages workflow (`.github/workflows/deploy.yml`) and the Worker
-  do not work with this setup.
+- ✅ VPS deployment: `compose.yaml` + `deploy/Caddyfile` (Caddy serves `frontend/dist` with SPA fallback,
+  proxies `/api` to the backend, automatic HTTPS). See the root README.
+- ⏳ CI: the GitHub Pages workflow (`.github/workflows/deploy.yml`) and the Worker do not fit this setup;
+  replace with a VPS deploy (or disable) before pushing to `master`.
 - ⏳ Import the ~60 students registered in the Worker's KV (`app_users`; has logins, not 42 IDs).
 - ⏳ Frontend still holds its own copy of the curriculum (`utils/data.ts`) and computes progress for the
   projects table; `/api/v1/curriculum` could replace it.
