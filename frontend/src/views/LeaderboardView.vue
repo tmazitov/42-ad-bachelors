@@ -36,9 +36,6 @@ const SEGMENTS: { key: SegmentKey; label: string; short: string; color: string }
   { key: 'elective', label: 'Elective', short: 'ELE', color: '#f97316' },
 ]
 
-// General credits are not trackable through the 42 API, so they are always 0.
-const CHIP_SEGMENTS = SEGMENTS.filter(seg => seg.key !== 'general')
-
 const MEDALS: Record<number, string> = { 1: '#eab308', 2: '#94a3b8', 3: '#c2703d' }
 
 const router = useRouter()
@@ -232,27 +229,25 @@ onMounted(async () => {
 
       <!-- List -->
       <div v-if="pageStudents.length" class="lb-card lb-list">
-        <router-link
+        <div
           v-for="s in pageStudents"
           :id="`lb-${s.login}`"
           :key="s.login"
-          :to="`/profile/${s.login}`"
           class="lb-row"
-          :class="{ 'lb-is-me': s.login === me?.login }"
         >
-          <span class="lb-rank" :style="MEDALS[s.rank] ? { color: MEDALS[s.rank] } : undefined">{{ s.rank }}</span>
+          <!-- Rank -->
+          <span class="lb-rank">{{ s.rank }}</span>
 
-          <StudentAvatar :login="s.login" :image="s.image" :size="40" />
+          <!-- Avatar -->
+          <StudentAvatar :login="s.login" :image="s.image" :size="36" />
 
-          <div class="lb-row__name">
-            <span class="font-medium truncate">
-              {{ s.login }}
-              <span v-if="s.login === me?.login" class="lb-you">you</span>
-            </span>
-            <span class="lb-muted text-xs truncate">{{ s.display_name }}</span>
-          </div>
+          <!-- Login -->
+          <router-link :to="`/profile/${s.login}`" class="lb-login">
+            {{ s.login }}
+          </router-link>
 
-          <div class="lb-row__progress">
+          <!-- Segmented progress bar -->
+          <div class="lb-bar-wrap">
             <div class="lb-bar">
               <div
                 v-for="seg in SEGMENTS"
@@ -261,24 +256,11 @@ onMounted(async () => {
                 :style="{ width: segWidth(s, seg.key), background: seg.color }"
               />
             </div>
-            <div class="lb-chips">
-              <span
-                v-for="seg in CHIP_SEGMENTS"
-                :key="seg.key"
-                class="lb-chip"
-                :class="{ 'lb-chip--zero': !s[seg.key] }"
-                :title="`${seg.label}: ${s[seg.key]} credits`"
-              >
-                <span class="lb-legend__dot" :style="{ background: seg.color }" />{{ s[seg.key] }}
-              </span>
-            </div>
           </div>
 
-          <div class="lb-row__score">
-            <span class="lb-row__pct">{{ s.percentage.toFixed(1) }}%</span>
-            <span class="lb-muted text-xs">{{ s.total }}/{{ TOTAL }}</span>
-          </div>
-        </router-link>
+          <!-- Percentage -->
+          <span class="lb-pct">{{ s.percentage.toFixed(1) }}%</span>
+        </div>
       </div>
 
       <div v-else-if="query" class="lb-card lb-empty lb-muted text-sm">
@@ -506,9 +488,6 @@ onMounted(async () => {
   gap: 0.875rem;
   padding: 0.75rem 1.25rem;
   border-bottom: 1px solid var(--card-border);
-  text-decoration: none;
-  color: inherit;
-  transition: background 0.15s;
 }
 
 .lb-row:last-child {
@@ -519,82 +498,44 @@ onMounted(async () => {
   background: var(--color-background-mute);
 }
 
-.lb-row.lb-is-me {
-  border-color: var(--card-border) !important;
-  box-shadow: inset 3px 0 0 var(--p-primary-color, #10b981);
-}
-
 .lb-rank {
-  width: 1.75rem;
-  text-align: center;
-  font-size: 0.875rem;
-  font-weight: 700;
-  color: var(--p-text-muted-color, #9ca3af);
-  flex-shrink: 0;
-  font-variant-numeric: tabular-nums;
-}
-
-.lb-row__name {
-  display: flex;
-  flex-direction: column;
-  width: 9rem;
-  min-width: 0;
-  flex-shrink: 0;
-}
-
-.lb-you {
-  margin-left: 0.25rem;
-  padding: 0 0.375rem;
-  border-radius: 999px;
-  background: var(--p-primary-color, #10b981);
-  color: #fff;
-  font-size: 0.625rem;
+  font-size: 0.75rem;
   font-weight: 600;
-  text-transform: uppercase;
-  vertical-align: middle;
+  color: var(--p-text-muted-color, #9ca3af);
+  width: 1.5rem;
+  text-align: right;
+  flex-shrink: 0;
 }
 
-.lb-row__progress {
+.lb-login {
+  font-size: 0.875rem;
+  font-weight: 500;
+  text-decoration: none;
+  color: inherit;
+  width: 7rem;
+  flex-shrink: 0;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.lb-login:hover {
+  color: var(--p-primary-color, #3b82f6);
+  text-decoration: underline;
+}
+
+.lb-bar-wrap {
   flex: 1;
   min-width: 0;
-  display: flex;
-  flex-direction: column;
-  gap: 0.375rem;
 }
 
-.lb-chips {
-  display: flex;
-  gap: 0.375rem;
-  flex-wrap: wrap;
-}
-
-.lb-chip {
-  display: inline-flex;
-  align-items: center;
-  gap: 0.25rem;
-  padding: 0 0.4rem;
-  border-radius: 999px;
-  border: 1px solid var(--card-border);
-  font-size: 0.68rem;
-  font-weight: 500;
-  font-variant-numeric: tabular-nums;
-}
-
-.lb-chip--zero {
-  opacity: 0.45;
-}
-
-.lb-row__score {
-  display: flex;
-  flex-direction: column;
-  align-items: flex-end;
-  width: 4rem;
+.lb-pct {
+  font-size: 0.8rem;
+  font-weight: 600;
+  width: 3.5rem;
+  text-align: right;
   flex-shrink: 0;
-}
-
-.lb-row__pct {
-  font-weight: 700;
-  font-variant-numeric: tabular-nums;
+  color: var(--p-text-muted-color, #9ca3af);
 }
 
 /* Progress bar */
@@ -688,27 +629,6 @@ onMounted(async () => {
 
   .lb-stat__value {
     font-size: 1.25rem;
-  }
-
-  .lb-row {
-    gap: 0.5rem;
-    padding: 0.75rem 0.875rem;
-  }
-
-  .lb-rank {
-    width: 1.25rem;
-  }
-
-  .lb-row__name {
-    width: 5.5rem;
-  }
-
-  .lb-row__score {
-    width: 3.25rem;
-  }
-
-  .lb-chips {
-    display: none;
   }
 
   .lb-search {
