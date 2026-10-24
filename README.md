@@ -3,7 +3,7 @@ A web app for 42 school students to track their progress toward the AD Bachelor'
 
 Log in with your 42 account to see which modules you've completed, how many credits you've earned per category, and how close you are to the 132-credit graduation requirement.
 
-![42 AD](./public/42-bachelors.png)
+![42 AD](./frontend/public/42-bachelors.png)
 
 ## Stack
 
@@ -14,7 +14,7 @@ Log in with your 42 account to see which modules you've completed, how many cred
 
 ## Setup
 
-Create a `.env` file with your 42 API credentials:
+The web app lives in `frontend/`. Create `frontend/.env` (see `frontend/.env.example`) with your 42 API credentials:
 
 ```
 VITE_42_CLIENT_ID=your_client_id
@@ -25,6 +25,7 @@ VITE_42_REDIRECT_URI=http://localhost:5173/auth/callback
 Then install and run:
 
 ```sh
+cd frontend
 npm install
 npm run dev
 ```

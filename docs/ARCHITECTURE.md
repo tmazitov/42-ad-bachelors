@@ -34,45 +34,49 @@ Features:
 ## 2. Repository layout
 
 ```
-src/
-  main.ts                    Vue app + Pinia + Router + PrimeVue (Aura, dark mode via `.dark`)
-  App.vue                    Shell: AppHeader + RouterView + footer
-  router/index.ts            Routes: /, /auth/callback, /profile/:login, /leaderboard
-  services/
-    oauth.ts                 Login redirect, code→token exchange, refresh (dev vs proxy mode)
-    apiFetch.ts              fetch wrapper: adds Bearer token, retries once after refresh on 401
-  stores/
-    auth.ts                  Tokens in localStorage, auto-refresh 5 min before expiry, fetchUser(/v2/me)
-    theme.ts                 Light/dark toggle persisted in localStorage
-    counter.ts               Unused scaffold leftover
-  composables/
-    useProjects.ts           GET /v2/users/:id/projects_users?filter[status]=finished (1 page, 100 max)
-    useProgress.ts           Credit calculation + CREDITS_REQUIRED + isCompleted()
-    useStudentSearch.ts      GET /v2/users?search[login]=… (debounced, abortable, X-Total pagination)
-    useProjectSearch.ts      GET /v2/cursus/21/projects?search[name]=…
-  models/Project.ts          Project(code, name, credit, id: number | number[] | null)
-  models/ProjectGroup.ts     ProjectGroup(name, projects[])
-  utils/data.ts              ★ The curriculum: module code → credits → 42 project ID(s)
-  views/                     HomeView, AuthCallbackView, StudentProfileView, LeaderboardView
-  components/
-    AppHeader.vue            Logo/home, avatar, leaderboard/search/logout/login/theme buttons
-    profile/Profile.vue      Loads projects for a user → ProgressChart
-    profile/ProgressChart.vue  Doughnut (chart.js) + per-category cards
-    profile/ProjectsModal.vue  Module table per category (done / not done, links to intra)
-    search/SearchModal.vue   Student + project search UI
-    ProjectLookup.vue        Debug helper that lists cursus 21 projects; commented out in HomeView
-worker/index.js              Cloudflare Worker (to be removed), see §4
-wrangler.toml                Worker config: KV binding, hourly cron, CAMPUS_ID var
-.github/workflows/deploy.yml Build → GitHub Pages; deploy Worker via wrangler-action
-public/404.html, index.html  GitHub Pages SPA deep-link redirect trick (sessionStorage 'spa-redirect')
+frontend/                    Vue SPA, run all npm commands here
+  src/
+    main.ts                    Vue app + Pinia + Router + PrimeVue (Aura, dark mode via `.dark`)
+    App.vue                    Shell: AppHeader + RouterView + footer
+    router/index.ts            Routes: /, /auth/callback, /profile/:login, /leaderboard
+    services/
+      oauth.ts                 Login redirect, code→token exchange, refresh (dev vs proxy mode)
+      apiFetch.ts              fetch wrapper: adds Bearer token, retries once after refresh on 401
+    stores/
+      auth.ts                  Tokens in localStorage, auto-refresh 5 min before expiry, fetchUser(/v2/me)
+      theme.ts                 Light/dark toggle persisted in localStorage
+      counter.ts               Unused scaffold leftover
+    composables/
+      useProjects.ts           GET /v2/users/:id/projects_users?filter[status]=finished (1 page, 100 max)
+      useProgress.ts           Credit calculation + CREDITS_REQUIRED + isCompleted()
+      useStudentSearch.ts      GET /v2/users?search[login]=… (debounced, abortable, X-Total pagination)
+      useProjectSearch.ts      GET /v2/cursus/21/projects?search[name]=…
+    models/Project.ts          Project(code, name, credit, id: number | number[] | null)
+    models/ProjectGroup.ts     ProjectGroup(name, projects[])
+    utils/data.ts              ★ The curriculum: module code → credits → 42 project ID(s)
+    views/                     HomeView, AuthCallbackView, StudentProfileView, LeaderboardView
+    components/
+      AppHeader.vue            Logo/home, avatar, leaderboard/search/logout/login/theme buttons
+      profile/Profile.vue      Loads projects for a user → ProgressChart
+      profile/ProgressChart.vue  Doughnut (chart.js) + per-category cards
+      profile/ProjectsModal.vue  Module table per category (done / not done, links to intra)
+      search/SearchModal.vue   Student + project search UI
+      ProjectLookup.vue        Debug helper that lists cursus 21 projects; commented out in HomeView
+  public/404.html, index.html  GitHub Pages SPA deep-link redirect trick (sessionStorage 'spa-redirect')
+  package.json, vite.config.ts, tsconfig*.json, eslint.config.ts, .oxlintrc.json, .nvmrc
+  .env.example, .env.production
+worker/index.js                Cloudflare Worker (to be removed), see §4
+wrangler.toml                  Worker config: KV binding, hourly cron, CAMPUS_ID var
+.github/workflows/deploy.yml   Build frontend/ → GitHub Pages; deploy Worker via wrangler-action
+docs/                          These notes
 ```
 
 Stack: Vue 3.5, TypeScript 6, Vite 8, Pinia 3, vue-router 5, PrimeVue 4 (Aura), Tailwind v4,
-Chart.js 4 / vue-chartjs. Node `^20.19 || >=22.12` (see `.nvmrc`). Lint: oxlint + eslint.
+Chart.js 4 / vue-chartjs. Node `^20.19 || >=22.12` (see `frontend/.nvmrc`). Lint: oxlint + eslint.
 
 ---
 
-## 3. Curriculum data (`src/utils/data.ts`)
+## 3. Curriculum data (`frontend/src/utils/data.ts`)
 
 - `Project.id` can be:
   - `number`: a single 42 project ID.
@@ -133,7 +137,7 @@ Response shape consumed by `LeaderboardView.vue`:
 
 1. `redirectToLogin()` → `https://api.intra.42.fr/oauth/authorize?client_id&redirect_uri&response_type=code&scope=public projects`
 2. 42 redirects to `/auth/callback?code=…` → `AuthCallbackView` → `exchangeCode(code)`
-   - **Dev** (no `VITE_42_TOKEN_PROXY`): POSTs directly to `/oauth/token` through the Vite dev proxy, sending the client secret from `.env`.
+   - **Dev** (no `VITE_42_TOKEN_PROXY`): POSTs directly to `/oauth/token` through the Vite dev proxy, sending the client secret from `frontend/.env`.
    - **Prod**: POSTs JSON to the Worker.
 3. `auth.setTokens()` stores `42_access_token`, `42_refresh_token`, and `42_expires_at` in **localStorage** and schedules a refresh 5 minutes before expiry.
 4. `fetchUser()` calls `/v2/me`. On 401 it refreshes once, then logs out.
@@ -143,7 +147,7 @@ Response shape consumed by `LeaderboardView.vue`:
 
 ## 6. Environment variables
 
-See `.env.example` at the repo root.
+See `frontend/.env.example`. Vite reads `.env*` files from `frontend/`.
 
 | Var | Where | Used by | Notes |
 |---|---|---|---|
@@ -161,7 +165,7 @@ GitHub secrets used by CI: `VITE_42_CLIENT_ID`, `VITE_42_CLIENT_SECRET`, `VITE_4
 `VITE_42_TOKEN_PROXY` (Worker base URL **without** a path; CI appends `/oauth/token`),
 `CLOUDFLARE_API_TOKEN`, `CLOUDFLARE_ACCOUNT_ID`.
 
-Local dev: `.env` with `VITE_42_CLIENT_ID`, `VITE_42_CLIENT_SECRET`, `VITE_42_REDIRECT_URI`; leave the
+Local dev: `frontend/.env` with `VITE_42_CLIENT_ID`, `VITE_42_CLIENT_SECRET`, `VITE_42_REDIRECT_URI`; leave the
 API base and proxy empty. The leaderboard **does not work in dev**, because there is no Worker and the
 Vite proxy does not forward `/leaderboard`.
 
@@ -170,11 +174,11 @@ Vite proxy does not forward `/leaderboard`.
 ## 7. Deployment (current)
 
 `.github/workflows/deploy.yml` runs on push to `master`:
-- `build`: `npm ci && npm run build` with env from secrets, writes `dist/404.html` for SPA routing, and uploads it to Pages.
+- `build` (working dir `frontend/`): `npm ci && npm run build` with env from secrets, writes `dist/404.html` for SPA routing, and uploads `frontend/dist` to Pages.
 - `deploy-worker`: `wrangler deploy` with secrets.
 - `deploy`: GitHub Pages.
 
-The frontend is static on GitHub Pages under `/<repo>/`. `.env.production` is committed with placeholder values,
+The frontend is static on GitHub Pages under `/<repo>/`. `frontend/.env.production` is committed with placeholder values,
 but CI env vars override it.
 
 ---
@@ -220,4 +224,4 @@ Things the backend must provide so the frontend keeps working, plus the planned 
 - Curriculum as Go data or seed tables, a **single source of truth** (see §3).
 
 **Then remove**: `worker/`, `wrangler.toml`, the `deploy-worker` CI job, the Cloudflare secrets, the `.wrangler/` gitignore entry,
-and the `.env.production` Worker placeholder. Also update `VITE_42_API_BASE` / `VITE_42_TOKEN_PROXY` to point at the new backend.
+and the `frontend/.env.production` Worker placeholder. Also update `VITE_42_API_BASE` / `VITE_42_TOKEN_PROXY` to point at the new backend.
