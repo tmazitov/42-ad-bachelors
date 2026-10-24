@@ -61,6 +61,8 @@ type Repository interface {
 	// ReplaceProjects stores projects as the student's full list of validated
 	// projects, synced at syncedAt.
 	ReplaceProjects(ctx context.Context, id ID, projects []CompletedProject, syncedAt time.Time) error
+	// List returns every registered student (profile only, no Projects).
+	List(ctx context.Context) ([]Student, error)
 	// ListSynced returns every student whose projects were synced at least
 	// once, with Projects and ProjectsSyncedAt populated.
 	ListSynced(ctx context.Context) ([]Student, error)

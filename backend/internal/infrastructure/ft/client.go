@@ -20,33 +20,52 @@ import (
 	"github.com/tmazitov/42-ad-bachelors/backend/internal/domain/student"
 )
 
-// 42 allows 2 requests per second per application by default.
-const requestsPerSecond = 2
+// Default 42 API limits per application.
+const (
+	defaultRatePerSecond = 2
+	defaultRatePerHour   = 1200
+)
 
-// Config holds the 42 OAuth application credentials.
+// maxRetries is how many times a 429 response is retried.
+const maxRetries = 3
+
+// Config holds the 42 OAuth application credentials and rate limits.
 type Config struct {
 	BaseURL      string
 	ClientID     string
 	ClientSecret string
 	RedirectURI  string
+	// RatePerSecond and RatePerHour cap API requests; 0 means the 42 default.
+	RatePerSecond int
+	RatePerHour   int
 }
 
 // Client talks to the 42 API. It implements auth.Provider,
 // progress.ProjectSource and avatar.Source. All API requests share one rate
 // limiter.
 type Client struct {
-	cfg     Config
-	http    *http.Client
-	limiter *rate.Limiter
-	app     appTokenCache
+	cfg  Config
+	http *http.Client
+	// Both limiters must allow a request: a short-term one for the per-second
+	// limit and a bucket holding the hourly budget.
+	perSecond *rate.Limiter
+	perHour   *rate.Limiter
+	app       appTokenCache
 }
 
 func NewClient(cfg Config) *Client {
 	cfg.BaseURL = strings.TrimRight(cfg.BaseURL, "/")
+	if cfg.RatePerSecond <= 0 {
+		cfg.RatePerSecond = defaultRatePerSecond
+	}
+	if cfg.RatePerHour <= 0 {
+		cfg.RatePerHour = defaultRatePerHour
+	}
 	return &Client{
-		cfg:     cfg,
-		http:    &http.Client{Timeout: 15 * time.Second},
-		limiter: rate.NewLimiter(requestsPerSecond, requestsPerSecond),
+		cfg:       cfg,
+		http:      &http.Client{Timeout: 15 * time.Second},
+		perSecond: rate.NewLimiter(rate.Limit(cfg.RatePerSecond), cfg.RatePerSecond),
+		perHour:   rate.NewLimiter(rate.Limit(float64(cfg.RatePerHour)/3600), cfg.RatePerHour),
 	}
 }
 
@@ -182,18 +201,69 @@ func (c *Client) CompletedProjects(ctx context.Context, accessToken string, id s
 	return nil, fmt.Errorf("42 projects_users: more than %d pages", maxProjectPages)
 }
 
-// do waits for the rate limiter, sends req and decodes a 2xx JSON response
-// into out. An OAuth "invalid_grant" error is returned as auth.ErrInvalidGrant.
+// do waits for the rate limiters, sends req and decodes a 2xx JSON response
+// into out. 429 responses are retried after Retry-After. An OAuth
+// "invalid_grant" error is returned as auth.ErrInvalidGrant.
 func (c *Client) do(req *http.Request, out any) (http.Header, error) {
-	if err := c.limiter.Wait(req.Context()); err != nil {
-		return nil, err
-	}
-
+	ctx := req.Context()
 	req.Header.Set("Accept", "application/json")
-	res, err := c.http.Do(req)
-	if err != nil {
-		return nil, err
+
+	for attempt := 0; ; attempt++ {
+		if err := c.wait(ctx); err != nil {
+			return nil, err
+		}
+
+		if attempt > 0 && req.GetBody != nil {
+			body, err := req.GetBody()
+			if err != nil {
+				return nil, err
+			}
+			req.Body = body
+		}
+
+		res, err := c.http.Do(req)
+		if err != nil {
+			return nil, err
+		}
+
+		if res.StatusCode == http.StatusTooManyRequests && attempt < maxRetries {
+			res.Body.Close()
+			if err := sleep(ctx, retryAfter(res.Header.Get("Retry-After"))); err != nil {
+				return nil, err
+			}
+			continue
+		}
+		return decode(res, out)
 	}
+}
+
+func (c *Client) wait(ctx context.Context) error {
+	if err := c.perHour.Wait(ctx); err != nil {
+		return err
+	}
+	return c.perSecond.Wait(ctx)
+}
+
+// retryAfter parses a Retry-After header in seconds, defaulting to 1s.
+func retryAfter(v string) time.Duration {
+	if secs, err := strconv.Atoi(v); err == nil && secs > 0 {
+		return time.Duration(secs) * time.Second
+	}
+	return time.Second
+}
+
+func sleep(ctx context.Context, d time.Duration) error {
+	t := time.NewTimer(d)
+	defer t.Stop()
+	select {
+	case <-ctx.Done():
+		return ctx.Err()
+	case <-t.C:
+		return nil
+	}
+}
+
+func decode(res *http.Response, out any) (http.Header, error) {
 	defer res.Body.Close()
 
 	body, err := io.ReadAll(io.LimitReader(res.Body, 8<<20))

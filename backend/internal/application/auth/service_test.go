@@ -40,6 +40,7 @@ func (m *memStudents) ReplaceProjects(context.Context, student.ID, []student.Com
 	return nil
 }
 
+func (m *memStudents) List(context.Context) ([]student.Student, error)       { return nil, nil }
 func (m *memStudents) ListSynced(context.Context) ([]student.Student, error) { return nil, nil }
 
 type fakeSyncer struct {

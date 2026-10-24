@@ -211,11 +211,11 @@ Things the backend must provide so the frontend keeps working, plus the planned 
 **Must replace**
 - ✅ `POST /oauth/token` and `POST /oauth/refresh`: done as `/api/v1/oauth/{token,refresh}` in `backend/`. They have the same
   response shape, and the frontend works unchanged with `VITE_42_TOKEN_PROXY=<backend>/api/v1/oauth/token`.
-- `GET /leaderboard`, with the same response shape.
+- ✅ `GET /leaderboard`: done as `/api/v1/leaderboard` (same shape plus `rank`, `synced_at`).
+- ✅ Hourly refresh: done by `backend/internal/interfaces/scheduler`, which runs `progress.SyncAll` with a rate-limited app token.
 - 42 API access for the SPA. Options: (a) keep a narrow `/v2/*` passthrough, possibly restricted to an
   allowlist of the GETs the SPA uses (`/v2/me`, `/v2/users`, `/v2/users/:x`, `/v2/users/:x/projects_users`,
   `/v2/cursus/21/projects`); or (b) move data fetching into backend endpoints that serve from SQLite.
-- Hourly refresh job (goroutine with ticker, or cron lib) using a `client_credentials` app token, rate-limited.
 - CORS for the frontend origin. Expose `X-Total`, `X-Page`, and `X-Per-Page` if passthrough is kept.
 
 **SQLite (sketch)**

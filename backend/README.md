@@ -47,6 +47,7 @@ internal/
                        progress.ProjectSource, avatar.Source)
     sqlite/            Connection, embedded migrations, repository implementations
   interfaces/http/     Fiber app, middleware, handlers, request/response DTOs
+  interfaces/scheduler/ Background jobs on an interval (progress sync)
   config/              Env-based configuration
 ```
 
@@ -62,6 +63,17 @@ The frontend stores 42's own tokens and keeps calling the 42 API with them. The 
 client secret, the same role the Cloudflare Worker had. The redirect URI comes from `FT_REDIRECT_URI`;
 a `redirect_uri` sent by the client is ignored. On the frontend, set
 `VITE_42_TOKEN_PROXY=http://localhost:8080/api/v1/oauth/token`; the refresh URL is derived from it.
+
+### Background sync
+`interfaces/scheduler` runs `progress.SyncAll` at startup and then every `SYNC_INTERVAL` (default `1h`; `0` turns it off).
+It syncs every registered student one at a time with a cached 42 app token (`client_credentials`).
+A failed student is logged and skipped; the run stops on shutdown and the server waits for it before closing the DB.
+Logins also sync the signed-in student right away.
+
+All 42 API calls go through two limiters in `ft.Client`: `FT_RATE_PER_SECOND` (default 2) and an hourly budget
+`FT_RATE_PER_HOUR` (default 1200). A 429 is retried up to 3 times after `Retry-After`. Each student costs at
+least one request, so one run of N students takes about N/2 seconds and N requests of the hourly budget.
+CDN image requests are not counted.
 
 ### Conventions
 - One package per bounded context or aggregate under `domain/`. Name packages after the concept, not the layer.

@@ -103,3 +103,21 @@ func TestReplaceProjectsUnknownStudent(t *testing.T) {
 		t.Fatal("want error for unknown student")
 	}
 }
+
+func TestListReturnsAllRegistered(t *testing.T) {
+	ctx := context.Background()
+	repo := NewStudentRepository(openTestDB(t))
+	for _, s := range []student.Student{{ID: 2, Login: "bob", DisplayName: "Bob"}, {ID: 1, Login: "alice", DisplayName: "Alice", ImageURL: "http://img"}} {
+		if err := repo.Save(ctx, s); err != nil {
+			t.Fatal(err)
+		}
+	}
+
+	list, err := repo.List(ctx)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(list) != 2 || list[0].Login != "alice" || list[0].ImageURL != "http://img" || list[1].Login != "bob" {
+		t.Errorf("list = %+v", list)
+	}
+}

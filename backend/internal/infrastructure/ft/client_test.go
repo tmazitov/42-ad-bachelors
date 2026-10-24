@@ -169,3 +169,48 @@ func TestImageUsesCachedAppToken(t *testing.T) {
 		t.Errorf("missing image err = %v, want ErrNotFound", err)
 	}
 }
+
+func TestRetriesOn429(t *testing.T) {
+	var calls int
+	c := newTestClient(t, func(w http.ResponseWriter, r *http.Request) {
+		calls++
+		r.ParseForm()
+		if r.PostForm.Get("code") != "abc" {
+			t.Errorf("attempt %d: body not resent, code = %q", calls, r.PostForm.Get("code"))
+		}
+		if calls == 1 {
+			w.Header().Set("Retry-After", "1")
+			w.WriteHeader(http.StatusTooManyRequests)
+			return
+		}
+		w.Write([]byte(`{"access_token":"a"}`))
+	})
+
+	token, err := c.ExchangeCode(context.Background(), "abc")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if calls != 2 || token.AccessToken != "a" {
+		t.Errorf("calls = %d, token = %+v", calls, token)
+	}
+}
+
+func TestHourlyBudgetBlocks(t *testing.T) {
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Write([]byte(`{"id":1,"login":"x"}`))
+	}))
+	t.Cleanup(srv.Close)
+	c := NewClient(Config{BaseURL: srv.URL, RatePerSecond: 100, RatePerHour: 2})
+
+	ctx, cancel := context.WithTimeout(context.Background(), 200*time.Millisecond)
+	defer cancel()
+	for i := range 2 {
+		if _, err := c.Profile(ctx, "tok"); err != nil {
+			t.Fatalf("request %d within budget: %v", i+1, err)
+		}
+	}
+	// The third request would have to wait ~30 minutes for the bucket to refill.
+	if _, err := c.Profile(ctx, "tok"); err == nil {
+		t.Fatal("third request should exceed the hourly budget")
+	}
+}

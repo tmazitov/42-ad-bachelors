@@ -7,7 +7,9 @@ import (
 	"log/slog"
 	"os"
 	"os/signal"
+	"sync"
 	"syscall"
+	"time"
 
 	"github.com/gofiber/fiber/v3"
 
@@ -19,6 +21,7 @@ import (
 	"github.com/tmazitov/42-ad-bachelors/backend/internal/infrastructure/ft"
 	"github.com/tmazitov/42-ad-bachelors/backend/internal/infrastructure/sqlite"
 	httpapi "github.com/tmazitov/42-ad-bachelors/backend/internal/interfaces/http"
+	"github.com/tmazitov/42-ad-bachelors/backend/internal/interfaces/scheduler"
 )
 
 func main() {
@@ -51,14 +54,16 @@ func run() error {
 	}
 
 	ftClient := ft.NewClient(ft.Config{
-		BaseURL:      cfg.FT.APIBase,
-		ClientID:     cfg.FT.ClientID,
-		ClientSecret: cfg.FT.ClientSecret,
-		RedirectURI:  cfg.FT.RedirectURI,
+		BaseURL:       cfg.FT.APIBase,
+		ClientID:      cfg.FT.ClientID,
+		ClientSecret:  cfg.FT.ClientSecret,
+		RedirectURI:   cfg.FT.RedirectURI,
+		RatePerSecond: cfg.FT.RatePerSecond,
+		RatePerHour:   cfg.FT.RatePerHour,
 	})
 	students := sqlite.NewStudentRepository(db)
 	bachelor := curriculum.ADBachelor()
-	progressSvc := progress.NewService(ftClient, students, bachelor)
+	progressSvc := progress.NewService(ftClient, ftClient, students, bachelor)
 
 	app := httpapi.NewServer(cfg, httpapi.Deps{
 		DB:         db,
@@ -69,6 +74,19 @@ func run() error {
 		Log:        log,
 	})
 
+	// Background sync; waited for before the database is closed.
+	var background sync.WaitGroup
+	defer background.Wait()
+	if cfg.SyncInterval > 0 {
+		background.Go(func() {
+			scheduler.Every(ctx, cfg.SyncInterval, func(ctx context.Context) {
+				syncAll(ctx, log, progressSvc)
+			})
+		})
+	} else {
+		log.Info("background sync disabled")
+	}
+
 	serveErr := make(chan error, 1)
 	go func() {
 		log.Info("listening", "addr", cfg.HTTPAddr)
@@ -77,6 +95,7 @@ func run() error {
 
 	select {
 	case err := <-serveErr:
+		stop() // let the background sync finish before returning
 		return err
 	case <-ctx.Done():
 	}
@@ -88,4 +107,28 @@ func run() error {
 		return fmt.Errorf("shutdown: %w", err)
 	}
 	return nil
+}
+
+// syncAll re-syncs every student's projects and logs the outcome.
+func syncAll(ctx context.Context, log *slog.Logger, svc *progress.Service) {
+	log.Info("sync started")
+	report, err := svc.SyncAll(ctx)
+	for _, f := range report.Failures {
+		log.Warn("sync failed for student", "login", f.Login, "err", f.Err)
+	}
+
+	attrs := []any{
+		"students", report.Students,
+		"synced", report.Synced,
+		"failed", len(report.Failures),
+		"duration", report.Duration.Round(time.Millisecond).String(),
+	}
+	switch {
+	case errors.Is(err, context.Canceled):
+		log.Info("sync interrupted", attrs...)
+	case err != nil:
+		log.Error("sync aborted", append(attrs, "err", err)...)
+	default:
+		log.Info("sync finished", attrs...)
+	}
 }

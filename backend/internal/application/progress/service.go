@@ -16,16 +16,22 @@ type ProjectSource interface {
 	CompletedProjects(ctx context.Context, accessToken string, id student.ID) ([]student.CompletedProject, error)
 }
 
+// AppTokenSource provides a 42 application token for server-side syncs.
+type AppTokenSource interface {
+	AppToken(ctx context.Context) (string, error)
+}
+
 // Service runs the progress use cases.
 type Service struct {
 	source     ProjectSource
+	tokens     AppTokenSource
 	students   student.Repository
 	curriculum curriculum.Curriculum
 	now        func() time.Time
 }
 
-func NewService(source ProjectSource, students student.Repository, c curriculum.Curriculum) *Service {
-	return &Service{source: source, students: students, curriculum: c, now: time.Now}
+func NewService(source ProjectSource, tokens AppTokenSource, students student.Repository, c curriculum.Curriculum) *Service {
+	return &Service{source: source, tokens: tokens, students: students, curriculum: c, now: time.Now}
 }
 
 // SyncStudent fetches the student's validated projects with accessToken (the
@@ -39,6 +45,54 @@ func (s *Service) SyncStudent(ctx context.Context, accessToken string, id studen
 		return fmt.Errorf("save projects: %w", err)
 	}
 	return nil
+}
+
+// SyncFailure is a student whose sync failed during SyncAll.
+type SyncFailure struct {
+	Login string
+	Err   error
+}
+
+// SyncReport summarizes a SyncAll run.
+type SyncReport struct {
+	Students int
+	Synced   int
+	Failures []SyncFailure
+	Duration time.Duration
+}
+
+// SyncAll syncs every registered student with the app token, one at a time.
+// A failing student is recorded in the report and does not stop the run;
+// a cancelled context or an unavailable app token does.
+func (s *Service) SyncAll(ctx context.Context) (report SyncReport, err error) {
+	start := s.now()
+	defer func() { report.Duration = s.now().Sub(start) }()
+
+	students, err := s.students.List(ctx)
+	if err != nil {
+		return report, fmt.Errorf("list students: %w", err)
+	}
+	report.Students = len(students)
+
+	for _, st := range students {
+		if err := ctx.Err(); err != nil {
+			return report, err
+		}
+		// Cached by the source; re-read so a long run survives token expiry.
+		token, err := s.tokens.AppToken(ctx)
+		if err != nil {
+			return report, err
+		}
+		if err := s.SyncStudent(ctx, token, st.ID); err != nil {
+			if ctx.Err() != nil {
+				return report, ctx.Err()
+			}
+			report.Failures = append(report.Failures, SyncFailure{Login: st.Login, Err: err})
+			continue
+		}
+		report.Synced++
+	}
+	return report, nil
 }
 
 // Board is the ranked leaderboard.

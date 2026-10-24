@@ -72,6 +72,27 @@ func (r *StudentRepository) ReplaceProjects(ctx context.Context, id student.ID, 
 	return tx.Commit()
 }
 
+func (r *StudentRepository) List(ctx context.Context) ([]student.Student, error) {
+	rows, err := r.db.QueryContext(ctx, `
+		SELECT id, login, display_name, COALESCE(image_url, '')
+		FROM students
+		ORDER BY id`)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+
+	var students []student.Student
+	for rows.Next() {
+		var s student.Student
+		if err := rows.Scan(&s.ID, &s.Login, &s.DisplayName, &s.ImageURL); err != nil {
+			return nil, err
+		}
+		students = append(students, s)
+	}
+	return students, rows.Err()
+}
+
 func (r *StudentRepository) ListSynced(ctx context.Context) ([]student.Student, error) {
 	rows, err := r.db.QueryContext(ctx, `
 		SELECT id, login, display_name, COALESCE(image_url, ''), projects_synced_at
