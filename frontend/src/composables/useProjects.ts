@@ -16,6 +16,15 @@ export interface ProjectUser {
   cursus_ids: number[]
 }
 
+// Fetches a user's finished projects (first 100, most recent first).
+export async function fetchFinishedProjects(userId: number): Promise<ProjectUser[]> {
+  const res = await apiFetch(
+    `${import.meta.env.VITE_42_API_BASE || ''}/v2/users/${userId}/projects_users?filter[status]=finished&sort=-marked_at&per_page=100`,
+  )
+  if (!res.ok) throw new Error(`${res.status}`)
+  return res.json()
+}
+
 export function useProjects() {
   const auth = useAuthStore()
   const projects = ref<ProjectUser[]>([])
@@ -27,11 +36,7 @@ export function useProjects() {
     loading.value = true
     error.value = null
     try {
-      const res = await apiFetch(
-        `${import.meta.env.VITE_42_API_BASE || ''}/v2/users/${userId}/projects_users?filter[status]=finished&sort=-marked_at&per_page=100`,
-      )
-      if (!res.ok) throw new Error(`${res.status}`)
-      projects.value = await res.json()
+      projects.value = await fetchFinishedProjects(userId)
     } catch (e) {
       error.value = e instanceof Error ? e.message : 'Failed to load projects'
     } finally {

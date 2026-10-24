@@ -3,20 +3,35 @@ import { watch, computed } from 'vue'
 import { useAuthStore } from '@/stores/auth'
 import type { FtUser } from '@/stores/auth'
 import { useProjects } from '@/composables/useProjects'
+import { useMyProgressStore } from '@/stores/myProgress'
 import ProgressChart from '@/components/profile/ProgressChart.vue'
 
 const props = defineProps<{ user?: FtUser }>()
 const auth = useAuthStore()
-const { projects, loading, error, fetchProjects } = useProjects()
+const { projects, loading, fetchProjects } = useProjects()
+const myProgress = useMyProgressStore()
 
 const effectiveUser = computed(() => props.user ?? auth.user)
 const isOwnProfile = computed(() => !props.user || props.user.id === auth.user?.id)
+
+// The signed-in student's projects come from the shared store (also used by
+// the header menu); anyone else's are fetched here.
+const shownProjects = computed(() => (isOwnProfile.value ? myProgress.projects : projects.value))
 // Also loading while the signed-in user itself is still being fetched.
-const isLoading = computed(() => loading.value || !effectiveUser.value)
+const isLoading = computed(() => {
+  const user = effectiveUser.value
+  if (!user) return true
+  if (isOwnProfile.value) return myProgress.loadedFor !== user.id && !myProgress.error
+  return loading.value
+})
 
 watch(
   effectiveUser,
-  (user) => { if (user) fetchProjects(user.id) },
+  (user) => {
+    if (!user) return
+    if (isOwnProfile.value) myProgress.load(user.id)
+    else fetchProjects(user.id)
+  },
   { immediate: true },
 )
 
@@ -38,7 +53,7 @@ function formatDate(iso: string | null): string {
   <section class="flex flex-col gap-4">
 
     <ProgressChart
-      :completed-projects="projects"
+      :completed-projects="shownProjects"
       :loading="isLoading"
       :title="isOwnProfile ? 'Your Progress' : `${effectiveUser?.login}'s Progress`"
     />

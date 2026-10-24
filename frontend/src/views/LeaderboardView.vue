@@ -378,7 +378,7 @@ onMounted(async () => {
   display: flex;
   align-items: center;
   gap: 0.875rem;
-  padding: 0.75rem 1.25rem;
+  padding: 0.375rem 1rem;
   border-bottom: 1px solid var(--card-border);
 }
 
