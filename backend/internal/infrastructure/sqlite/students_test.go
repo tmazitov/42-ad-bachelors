@@ -113,11 +113,22 @@ func TestListReturnsAllRegistered(t *testing.T) {
 		}
 	}
 
+	synced := time.Date(2026, 10, 24, 12, 0, 0, 123456789, time.UTC)
+	if err := repo.ReplaceProjects(ctx, 2, nil, synced); err != nil {
+		t.Fatal(err)
+	}
+
 	list, err := repo.List(ctx)
 	if err != nil {
 		t.Fatal(err)
 	}
 	if len(list) != 2 || list[0].Login != "alice" || list[0].ImageURL != "http://img" || list[1].Login != "bob" {
-		t.Errorf("list = %+v", list)
+		t.Fatalf("list = %+v", list)
+	}
+	if !list[0].ProjectsSyncedAt.IsZero() {
+		t.Errorf("alice synced at %v, want zero (never synced)", list[0].ProjectsSyncedAt)
+	}
+	if !list[1].ProjectsSyncedAt.Equal(synced) {
+		t.Errorf("bob synced at %v, want %v", list[1].ProjectsSyncedAt, synced)
 	}
 }

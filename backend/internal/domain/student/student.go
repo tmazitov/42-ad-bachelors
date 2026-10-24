@@ -26,7 +26,8 @@ type Student struct {
 	DisplayName string
 	ImageURL    string // may be empty
 
-	// Projects and ProjectsSyncedAt are set when loaded by ListSynced.
+	// Projects is set when loaded by ListSynced. ProjectsSyncedAt is zero
+	// until the first sync.
 	Projects         []CompletedProject
 	ProjectsSyncedAt time.Time
 }
@@ -45,6 +46,12 @@ func New(id ID, login, displayName, imageURL string) (Student, error) {
 	return Student{ID: id, Login: login, DisplayName: displayName, ImageURL: imageURL}, nil
 }
 
+// NeedsSync reports whether the student's projects were never synced or were
+// last synced at least maxAge before now.
+func (s Student) NeedsSync(now time.Time, maxAge time.Duration) bool {
+	return s.ProjectsSyncedAt.IsZero() || now.Sub(s.ProjectsSyncedAt) >= maxAge
+}
+
 // Validated returns the set of the student's validated project IDs.
 func (s Student) Validated() curriculum.ProjectSet {
 	set := make(curriculum.ProjectSet, len(s.Projects))
@@ -61,7 +68,7 @@ type Repository interface {
 	// ReplaceProjects stores projects as the student's full list of validated
 	// projects, synced at syncedAt.
 	ReplaceProjects(ctx context.Context, id ID, projects []CompletedProject, syncedAt time.Time) error
-	// List returns every registered student (profile only, no Projects).
+	// List returns every registered student with ProjectsSyncedAt (no Projects).
 	List(ctx context.Context) ([]Student, error)
 	// ListSynced returns every student whose projects were synced at least
 	// once, with Projects and ProjectsSyncedAt populated.

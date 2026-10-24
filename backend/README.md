@@ -66,13 +66,15 @@ a `redirect_uri` sent by the client is ignored. On the frontend, set
 
 ### Background sync
 `interfaces/scheduler` runs `progress.SyncAll` at startup and then every `SYNC_INTERVAL` (default `1h`; `0` turns it off).
-It syncs every registered student one at a time with a cached 42 app token (`client_credentials`).
+Each run syncs, one at a time with a cached 42 app token (`client_credentials`), only the students whose last
+sync is at least `SYNC_MAX_AGE` old (default `24h`) or who were never synced. Logging in syncs a student
+immediately, so active students are skipped and only those who haven't logged in for a day are refreshed.
 A failed student is logged and skipped; the run stops on shutdown and the server waits for it before closing the DB.
 Logins also sync the signed-in student right away.
 
 All 42 API calls go through two limiters in `ft.Client`: `FT_RATE_PER_SECOND` (default 2) and an hourly budget
-`FT_RATE_PER_HOUR` (default 1200). A 429 is retried up to 3 times after `Retry-After`. Each student costs at
-least one request, so one run of N students takes about N/2 seconds and N requests of the hourly budget.
+`FT_RATE_PER_HOUR` (default 1200). A 429 is retried up to 3 times after `Retry-After`. Each synced student costs at
+least one request, so syncing N students takes about N/2 seconds and N requests of the hourly budget.
 CDN image requests are not counted.
 
 ### Conventions

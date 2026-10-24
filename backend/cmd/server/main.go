@@ -80,7 +80,7 @@ func run() error {
 	if cfg.SyncInterval > 0 {
 		background.Go(func() {
 			scheduler.Every(ctx, cfg.SyncInterval, func(ctx context.Context) {
-				syncAll(ctx, log, progressSvc)
+				syncAll(ctx, log, progressSvc, cfg.SyncMaxAge)
 			})
 		})
 	} else {
@@ -109,16 +109,17 @@ func run() error {
 	return nil
 }
 
-// syncAll re-syncs every student's projects and logs the outcome.
-func syncAll(ctx context.Context, log *slog.Logger, svc *progress.Service) {
-	log.Info("sync started")
-	report, err := svc.SyncAll(ctx)
+// syncAll re-syncs students not synced within maxAge and logs the outcome.
+func syncAll(ctx context.Context, log *slog.Logger, svc *progress.Service, maxAge time.Duration) {
+	log.Info("sync started", "max_age", maxAge.String())
+	report, err := svc.SyncAll(ctx, maxAge)
 	for _, f := range report.Failures {
 		log.Warn("sync failed for student", "login", f.Login, "err", f.Err)
 	}
 
 	attrs := []any{
 		"students", report.Students,
+		"skipped", report.Skipped,
 		"synced", report.Synced,
 		"failed", len(report.Failures),
 		"duration", report.Duration.Round(time.Millisecond).String(),

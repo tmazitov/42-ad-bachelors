@@ -51,7 +51,7 @@ func TestSyncAllContinuesPastFailures(t *testing.T) {
 	src := &fakeSource{failFor: map[student.ID]bool{2: true}}
 	svc := NewService(src, fakeTokens{}, repo, curriculum.ADBachelor())
 
-	report, err := svc.SyncAll(context.Background())
+	report, err := svc.SyncAll(context.Background(), 24*time.Hour)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -72,7 +72,7 @@ func TestSyncAllStopsWithoutAppToken(t *testing.T) {
 	repo := newRepo()
 	svc := NewService(&fakeSource{}, fakeTokens{err: errors.New("bad secret")}, repo, curriculum.ADBachelor())
 
-	if _, err := svc.SyncAll(context.Background()); err == nil {
+	if _, err := svc.SyncAll(context.Background(), 24*time.Hour); err == nil {
 		t.Fatal("want error when app token is unavailable")
 	}
 	if len(repo.replaced) != 0 {
@@ -85,8 +85,30 @@ func TestSyncAllStopsOnCancel(t *testing.T) {
 	cancel()
 	svc := NewService(&fakeSource{}, fakeTokens{}, newRepo(), curriculum.ADBachelor())
 
-	report, err := svc.SyncAll(ctx)
+	report, err := svc.SyncAll(ctx, 24*time.Hour)
 	if !errors.Is(err, context.Canceled) || report.Synced != 0 {
 		t.Errorf("report = %+v, err = %v", report, err)
+	}
+}
+
+func TestSyncAllSkipsRecentlySynced(t *testing.T) {
+	now := time.Date(2026, 10, 25, 12, 0, 0, 0, time.UTC)
+	repo := &memRepo{students: []student.Student{
+		{ID: 1, Login: "fresh", ProjectsSyncedAt: now.Add(-2 * time.Hour)},
+		{ID: 2, Login: "stale", ProjectsSyncedAt: now.Add(-25 * time.Hour)},
+		{ID: 3, Login: "never"},
+	}}
+	svc := NewService(&fakeSource{}, fakeTokens{}, repo, curriculum.ADBachelor())
+	svc.now = func() time.Time { return now }
+
+	report, err := svc.SyncAll(context.Background(), 24*time.Hour)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if report.Students != 3 || report.Skipped != 1 || report.Synced != 2 {
+		t.Errorf("report = %+v", report)
+	}
+	if len(repo.replaced) != 2 || repo.replaced[0] != 2 || repo.replaced[1] != 3 {
+		t.Errorf("replaced = %v, want [2 3]", repo.replaced)
 	}
 }

@@ -19,7 +19,10 @@ type Config struct {
 	// SyncInterval is how often every student's progress is re-synced from
 	// 42; 0 disables the background sync.
 	SyncInterval time.Duration
-	FT           FTConfig
+	// SyncMaxAge: the background sync only re-syncs students whose last sync
+	// (at login or by a previous run) is at least this old.
+	SyncMaxAge time.Duration
+	FT         FTConfig
 }
 
 // FTConfig holds the 42 OAuth application settings
@@ -66,6 +69,9 @@ func Load() (Config, error) {
 	var err error
 	if cfg.SyncInterval, err = time.ParseDuration(getenv("SYNC_INTERVAL", "1h")); err != nil || cfg.SyncInterval < 0 {
 		return Config{}, fmt.Errorf("SYNC_INTERVAL: invalid duration %q", os.Getenv("SYNC_INTERVAL"))
+	}
+	if cfg.SyncMaxAge, err = time.ParseDuration(getenv("SYNC_MAX_AGE", "24h")); err != nil || cfg.SyncMaxAge < 0 {
+		return Config{}, fmt.Errorf("SYNC_MAX_AGE: invalid duration %q", os.Getenv("SYNC_MAX_AGE"))
 	}
 	if cfg.FT.RatePerSecond, err = getenvInt("FT_RATE_PER_SECOND", 2); err != nil {
 		return Config{}, err

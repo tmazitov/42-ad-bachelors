@@ -55,16 +55,19 @@ type SyncFailure struct {
 
 // SyncReport summarizes a SyncAll run.
 type SyncReport struct {
-	Students int
+	Students int // registered students
+	Skipped  int // synced recently enough
 	Synced   int
 	Failures []SyncFailure
 	Duration time.Duration
 }
 
-// SyncAll syncs every registered student with the app token, one at a time.
-// A failing student is recorded in the report and does not stop the run;
-// a cancelled context or an unavailable app token does.
-func (s *Service) SyncAll(ctx context.Context) (report SyncReport, err error) {
+// SyncAll syncs, one at a time with the app token, every registered student
+// whose projects were never synced or were synced at least maxAge ago (a login
+// syncs the student too, so active students are skipped). A failing student
+// is recorded in the report and does not stop the run; a cancelled context or
+// an unavailable app token does.
+func (s *Service) SyncAll(ctx context.Context, maxAge time.Duration) (report SyncReport, err error) {
 	start := s.now()
 	defer func() { report.Duration = s.now().Sub(start) }()
 
@@ -74,7 +77,12 @@ func (s *Service) SyncAll(ctx context.Context) (report SyncReport, err error) {
 	}
 	report.Students = len(students)
 
+	now := s.now()
 	for _, st := range students {
+		if !st.NeedsSync(now, maxAge) {
+			report.Skipped++
+			continue
+		}
 		if err := ctx.Err(); err != nil {
 			return report, err
 		}

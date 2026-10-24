@@ -74,7 +74,7 @@ func (r *StudentRepository) ReplaceProjects(ctx context.Context, id student.ID, 
 
 func (r *StudentRepository) List(ctx context.Context) ([]student.Student, error) {
 	rows, err := r.db.QueryContext(ctx, `
-		SELECT id, login, display_name, COALESCE(image_url, '')
+		SELECT id, login, display_name, COALESCE(image_url, ''), projects_synced_at
 		FROM students
 		ORDER BY id`)
 	if err != nil {
@@ -85,8 +85,14 @@ func (r *StudentRepository) List(ctx context.Context) ([]student.Student, error)
 	var students []student.Student
 	for rows.Next() {
 		var s student.Student
-		if err := rows.Scan(&s.ID, &s.Login, &s.DisplayName, &s.ImageURL); err != nil {
+		var syncedAt sql.NullString
+		if err := rows.Scan(&s.ID, &s.Login, &s.DisplayName, &s.ImageURL, &syncedAt); err != nil {
 			return nil, err
+		}
+		if syncedAt.Valid {
+			if s.ProjectsSyncedAt, err = time.Parse(timeLayout, syncedAt.String); err != nil {
+				return nil, fmt.Errorf("student %d projects_synced_at: %w", s.ID, err)
+			}
 		}
 		students = append(students, s)
 	}
