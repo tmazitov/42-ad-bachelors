@@ -12,6 +12,7 @@ import (
 	"github.com/gofiber/fiber/v3"
 
 	"github.com/tmazitov/42-ad-bachelors/backend/internal/application/auth"
+	"github.com/tmazitov/42-ad-bachelors/backend/internal/application/avatar"
 	"github.com/tmazitov/42-ad-bachelors/backend/internal/application/progress"
 	"github.com/tmazitov/42-ad-bachelors/backend/internal/config"
 	"github.com/tmazitov/42-ad-bachelors/backend/internal/domain/curriculum"
@@ -64,6 +65,7 @@ func run() error {
 		Curriculum: bachelor,
 		Auth:       auth.NewService(ftClient, students, progressSvc, log),
 		Progress:   progressSvc,
+		Avatar:     avatar.NewService(ftClient),
 		Log:        log,
 	})
 

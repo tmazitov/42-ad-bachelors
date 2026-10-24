@@ -177,7 +177,14 @@ onMounted(async () => {
       </div>
 
       <!-- Podium -->
-      <div v-if="podiumOrdered.length" class="lb-podium">
+      <div
+        v-if="podiumOrdered.length"
+        class="lb-podium"
+        :style="{
+          gridTemplateColumns: `repeat(${podiumOrdered.length}, minmax(0, 1fr))`,
+          maxWidth: podiumOrdered.length < 3 ? `${podiumOrdered.length * 300}px` : undefined,
+        }"
+      >
         <router-link
           v-for="s in podiumOrdered"
           :id="`lb-${s.login}`"
@@ -385,9 +392,10 @@ onMounted(async () => {
 /* Podium */
 .lb-podium {
   display: grid;
-  grid-template-columns: repeat(3, 1fr);
   align-items: end;
   gap: 1rem;
+  width: 100%;
+  margin: 0 auto;
 }
 
 .lb-podium__item {
@@ -402,6 +410,10 @@ onMounted(async () => {
   color: inherit;
   min-width: 0;
   transition: transform 0.15s, box-shadow 0.15s;
+}
+
+.lb-podium__item.lb-is-me {
+  border-top-color: var(--medal) !important;
 }
 
 .lb-podium__item:hover {

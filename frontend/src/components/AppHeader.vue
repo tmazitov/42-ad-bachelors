@@ -6,6 +6,7 @@ import { useThemeStore } from '@/stores/theme'
 import { useAuthStore } from '@/stores/auth'
 import { redirectToLogin } from '@/services/oauth'
 import SearchModal from '@/components/search/SearchModal.vue'
+import { proxiedImage } from '@/utils/avatar'
 
 const router = useRouter()
 const theme = useThemeStore()
@@ -16,7 +17,7 @@ if (auth.token && !auth.user) {
 }
 
 const avatarUrl = computed(() =>
-  auth.user?.image?.versions?.medium ?? auth.user?.image?.link ?? null
+  proxiedImage(auth.user?.image?.versions?.medium ?? auth.user?.image?.link)
 )
 
 const searchVisible = ref(false)

@@ -6,6 +6,7 @@ import { useAuthStore } from '@/stores/auth'
 import type { FtUser } from '@/stores/auth'
 import { apiFetch } from '@/services/apiFetch'
 import Profile from '@/components/profile/Profile.vue'
+import { proxiedImage } from '@/utils/avatar'
 
 interface ProjectInProgress {
   id: number
@@ -23,7 +24,7 @@ const loading = ref(false)
 const error = ref<string | null>(null)
 
 const avatarUrl = computed(() =>
-  user.value?.image?.versions?.medium ?? user.value?.image?.link ?? null
+  proxiedImage(user.value?.image?.versions?.medium ?? user.value?.image?.link)
 )
 
 watch(

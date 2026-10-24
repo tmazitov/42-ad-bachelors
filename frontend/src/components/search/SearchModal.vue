@@ -11,6 +11,7 @@ import {
   allGroups,
 } from '@/utils/data'
 import type { ProjectGroup } from '@/models/ProjectGroup'
+import { proxiedImage } from '@/utils/avatar'
 
 const GROUP_COLORS = new Map<ProjectGroup, string>([
   [generalEducationModules, '#22c55e'],
@@ -144,7 +145,7 @@ function selectProject(slug: string) {
                   <span class="result-avatar__initial">{{ user.login[0]?.toUpperCase() }}</span>
                   <img
                     v-if="user.image?.versions?.small ?? user.image?.link"
-                    :src="(user.image?.versions?.small ?? user.image?.link)!"
+                    :src="proxiedImage(user.image?.versions?.small ?? user.image?.link)!"
                     class="result-avatar__img"
                     alt=""
                     @load="(e) => (e.target as HTMLElement).classList.add('is-loaded')"

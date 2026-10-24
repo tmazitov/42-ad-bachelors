@@ -1,4 +1,6 @@
 <script setup lang="ts">
+import { proxiedImage } from '@/utils/avatar'
+
 defineProps<{
   login: string
   image: string | null
@@ -20,7 +22,7 @@ defineProps<{
     <span class="avatar__initial">{{ login[0]?.toUpperCase() }}</span>
     <img
       v-if="image"
-      :src="image"
+      :src="proxiedImage(image)!"
       class="avatar__img"
       alt=""
       loading="lazy"

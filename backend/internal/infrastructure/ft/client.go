@@ -31,12 +31,14 @@ type Config struct {
 	RedirectURI  string
 }
 
-// Client talks to the 42 API. It implements auth.Provider and
-// progress.ProjectSource. All requests share one rate limiter.
+// Client talks to the 42 API. It implements auth.Provider,
+// progress.ProjectSource and avatar.Source. All API requests share one rate
+// limiter.
 type Client struct {
 	cfg     Config
 	http    *http.Client
 	limiter *rate.Limiter
+	app     appTokenCache
 }
 
 func NewClient(cfg Config) *Client {

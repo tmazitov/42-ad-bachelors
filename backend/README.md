@@ -24,6 +24,8 @@ Docker: `make docker && docker run -p 8080:8080 -v ad-data:/data 42-ad-bachelors
 | GET | `/api/v1/curriculum` | Modules grouped by category, with credits and 42 project IDs |
 | POST | `/api/v1/oauth/token` | `{"code"}` → 42 token JSON. Registers the student. 400 if the code is invalid or expired |
 | POST | `/api/v1/oauth/refresh` | `{"refresh_token"}` → 42 token JSON. 401 if the refresh token is invalid or expired |
+| GET | `/api/v1/leaderboard` | Synced students ranked by credits (ties share a rank) |
+| GET | `/api/v1/avatar?url=` | Proxies a `https://cdn.intra.42.fr/users/...` image. The CDN requires auth, so `<img>` can't load it directly. 400 for other URLs |
 
 Errors are always JSON: `{"error": "message"}`.
 
@@ -34,11 +36,15 @@ cmd/server/            Composition root: config → DB → migrations → HTTP; 
 internal/
   domain/              Business rules. Pure Go: no Fiber, no SQL, no HTTP clients.
     curriculum/        Module, Category, Curriculum, Progress; AD Bachelor data; credit calculation
-    student/           Student aggregate + Repository port
+    student/           Student aggregate (+ validated projects) + Repository port
+    leaderboard/       Ranking of students by credits
   application/         Use cases that orchestrate domain + ports
     auth/              Login (code exchange + student registration), token refresh; Provider port
+    progress/          Project sync, leaderboard; ProjectSource port
+    avatar/            42 CDN image proxy with in-memory cache; Source port
   infrastructure/      Adapters to the outside world
-    ft/                42 intra API client (implements auth.Provider)
+    ft/                42 intra API client, rate-limited, cached app token (implements auth.Provider,
+                       progress.ProjectSource, avatar.Source)
     sqlite/            Connection, embedded migrations, repository implementations
   interfaces/http/     Fiber app, middleware, handlers, request/response DTOs
   config/              Env-based configuration
