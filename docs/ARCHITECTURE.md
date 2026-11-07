@@ -225,8 +225,10 @@ but CI env vars override it.
 - ✅ Leaderboard (`/api/v1/leaderboard`, now behind the session) and the hourly background sync with rate limits.
 - ✅ The SPA reads everything from the backend (`/me`, `/students/:login`, `/students?search=`); no 42 API passthrough.
 - ✅ Avatars through `/api/v1/avatar` (the 42 CDN requires auth).
-- ✅ VPS deployment: `compose.yaml` + `deploy/Caddyfile` (Caddy serves `frontend/dist` with SPA fallback,
-  proxies `/api` to the backend, automatic HTTPS). See the root README.
+- ✅ Deployment: `compose.yaml` with an nginx entry point (`deploy/nginx/`) routing `/api/*` to the backend and
+  everything else to the frontend (its own nginx serving `dist/` with SPA fallback). Frontend and backend are on
+  separate internal networks with no published ports; TLS is terminated by the hosting platform (Coolify).
+  See the root README.
 - ⏳ CI: the GitHub Pages workflow (`.github/workflows/deploy.yml`) and the Worker do not fit this setup;
   replace with a VPS deploy (or disable) before pushing to `master`.
 - ⏳ Import the ~60 students registered in the Worker's KV (`app_users`; has logins, not 42 IDs).

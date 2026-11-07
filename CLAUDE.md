@@ -8,7 +8,8 @@ AD Bachelor's credits (132 total). **Read `docs/ARCHITECTURE.md` first** for the
 - `backend/`: Go + Fiber v3 + SQLite service, DDD layout. See `backend/README.md` for architecture and conventions
 - `worker/` + `wrangler.toml`: legacy Cloudflare Worker (to be removed)
 - `docs/`: project notes
-- `compose.yaml` + `deploy/Caddyfile`: production stack (Caddy serves the SPA + proxies `/api`, HTTPS)
+- `compose.yaml` + `deploy/nginx/`: production stack (nginx entry point routes `/api/*` → backend, `/*` → frontend;
+  plain HTTP, TLS by the hosting platform, e.g. Coolify)
 
 ## Commands (in `frontend/`)
 - `npm install` / `npm run dev`: dev server on :5173 (proxies `/api` to the backend on :8080; start the backend first)

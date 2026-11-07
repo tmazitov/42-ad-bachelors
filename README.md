@@ -26,20 +26,28 @@ Log in with your 42 account to see which modules you've completed, how many cred
    npm run dev            # http://localhost:5173
    ```
 
-## Deploy (VPS, Docker Compose)
+## Deploy (Docker Compose, e.g. Coolify)
 
-`compose.yaml` runs two containers: **web** (Caddy serving the built frontend, proxying `/api` to the backend,
-with automatic HTTPS) and **backend** (Go + SQLite on a named volume, not exposed).
+`compose.yaml` runs three containers. Only **nginx** is an entry point; it routes by URL prefix:
 
-1. Point your domain's DNS at the VPS and open ports 80 and 443.
-2. Register `https://<your-domain>/auth/callback` as the redirect URI of the 42 app.
-3. Configure and start:
-   ```sh
-   cp .env.example .env                   # SITE_ADDRESS=<your-domain>, PUBLIC_URL=https://<your-domain>
-   cp backend/.env.example backend/.env   # FT_CLIENT_ID, FT_CLIENT_SECRET
-   docker compose up -d --build
-   ```
-4. Update: `git pull && docker compose up -d --build`. Logs: `docker compose logs -f backend`.
+| Prefix | Service |
+|---|---|
+| `/api/*` | **backend** (Go + SQLite on the `backend-data` volume) |
+| `/*` | **frontend** (static SPA) |
+
+No service publishes host ports and the frontend and backend are only reachable from nginx (separate Docker
+networks). nginx speaks plain HTTP: the platform's proxy (Coolify) terminates HTTPS and forwards to it.
+
+On Coolify:
+1. Create a resource from this repository using the **Docker Compose** build pack (`compose.yaml`).
+2. Assign your domain to the **nginx** service with its port, e.g. `https://<your-domain>:8000` (`NGINX_PORT`,
+   default 8000; users still connect on 443). Coolify issues the Let's Encrypt certificate.
+3. Set the environment variables from `.env.example`: `PUBLIC_URL=https://<your-domain>`, `FT_CLIENT_ID`,
+   `FT_CLIENT_SECRET` (optional tuning values have defaults).
+4. Register `https://<your-domain>/auth/callback` as the redirect URI of the 42 app, then deploy.
+
+Elsewhere: copy `.env.example` to `.env`, fill it in, put a TLS proxy in front of nginx (or add a `ports:`
+mapping for nginx in an override file) and run `docker compose up -d --build`.
 
 The database lives in the `backend-data` volume (`/data/app.db` in the container); back it up with e.g.
 `docker compose cp backend:/data/app.db ./backup.db`.
