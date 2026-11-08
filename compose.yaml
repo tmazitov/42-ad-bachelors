@@ -1,8 +1,8 @@
 # Production stack (e.g. on Coolify):
 #   nginx    — the only entry point; routes /api/* to the backend and
-#              everything else to the frontend. Plain HTTP on NGINX_PORT
-#              (default 8088): the platform's proxy (Coolify) terminates TLS
-#              and forwards to it.
+#              everything else to the frontend. Plain HTTP on port 8088:
+#              the platform's proxy (Coolify) terminates TLS and forwards
+#              to it.
 #   frontend — static SPA; reachable only from nginx (network `web`).
 #   backend  — Go API + SQLite (backend-data volume); reachable only from
 #              nginx (network `api`), with outbound internet for the 42 API.
@@ -16,10 +16,12 @@
 services:
   nginx:
     build: ./deploy/nginx
+    # Literal port (not a variable) so Coolify detects it from `expose`.
+    # To change it, edit both lines and the port in Coolify's domain.
     environment:
-      NGINX_PORT: ${NGINX_PORT:-8088}
+      NGINX_PORT: "8088"
     expose:
-      - "${NGINX_PORT:-8088}"
+      - "8088"
     networks:
       - web
       - api

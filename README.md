@@ -40,8 +40,9 @@ networks). nginx speaks plain HTTP: the platform's proxy (Coolify) terminates HT
 
 On Coolify:
 1. Create a resource from this repository using the **Docker Compose** build pack (`compose.yaml`).
-2. Assign your domain to the **nginx** service with its port, e.g. `https://<your-domain>:8088` (`NGINX_PORT`,
-   default 8088, so it never collides with the Coolify dashboard on the host's 8000; users still connect on 443). Coolify issues the Let's Encrypt certificate.
+2. Assign your domain to the **nginx** service with its port: `https://<your-domain>:8088`. 8088 is nginx's port
+   inside its container (it never collides with Coolify's dashboard on the host's 8000); users still connect on 443.
+   Coolify issues the Let's Encrypt certificate.
 3. Set the environment variables from `.env.example`: `PUBLIC_URL=https://<your-domain>`, `FT_CLIENT_ID`,
    `FT_CLIENT_SECRET` (optional tuning values have defaults).
 4. Register `https://<your-domain>/auth/callback` as the redirect URI of the 42 app, then deploy.
