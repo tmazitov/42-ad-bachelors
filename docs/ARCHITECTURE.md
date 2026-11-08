@@ -229,8 +229,8 @@ but CI env vars override it.
   everything else to the frontend (its own nginx serving `dist/` with SPA fallback). Frontend and backend are on
   separate internal networks with no published ports; TLS is terminated by the hosting platform (Coolify).
   See the root README.
-- ⏳ CI: the GitHub Pages workflow (`.github/workflows/deploy.yml`) and the Worker do not fit this setup;
-  replace with a VPS deploy (or disable) before pushing to `master`.
+- ✅ The GitHub Pages/Worker deploy workflow is removed; Coolify deploys from the repository. Still to do outside
+  the repo: turn off GitHub Pages (Settings → Pages) and delete the Cloudflare Worker and its KV namespace.
 - ⏳ Import the ~60 students registered in the Worker's KV (`app_users`; has logins, not 42 IDs).
 - ⏳ Frontend still holds its own copy of the curriculum (`utils/data.ts`) and computes progress for the
   projects table; `/api/v1/curriculum` could replace it.
