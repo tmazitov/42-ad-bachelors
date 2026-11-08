@@ -179,3 +179,26 @@ func TestSearch(t *testing.T) {
 		}
 	}
 }
+
+func TestSetStreamSurvivesProfileSave(t *testing.T) {
+	ctx := context.Background()
+	repo := NewStudentRepository(openTestDB(t))
+	save(t, repo, student.Student{ID: 1, Login: "alice", DisplayName: "Alice", RegisteredAt: registered})
+
+	if err := repo.SetStream(ctx, 1, "mobile-web"); err != nil {
+		t.Fatal(err)
+	}
+	// A profile refresh from 42 must not reset the choice.
+	save(t, repo, student.Student{ID: 1, Login: "alice", DisplayName: "Alice B."})
+
+	s, err := repo.FindByLogin(ctx, "alice")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if s.Stream != "mobile-web" || s.DisplayName != "Alice B." {
+		t.Errorf("student = %+v", s)
+	}
+	if err := repo.SetStream(ctx, 99, "mobile-web"); !errors.Is(err, student.ErrNotFound) {
+		t.Errorf("SetStream(99) err = %v, want ErrNotFound", err)
+	}
+}

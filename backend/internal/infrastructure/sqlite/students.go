@@ -26,7 +26,7 @@ func NewStudentRepository(db *sql.DB) *StudentRepository {
 var _ student.Repository = (*StudentRepository)(nil)
 
 const studentColumns = `id, login, display_name, COALESCE(image_url, ''), is_staff, is_alumni,
-	registered_at, projects_synced_at`
+	COALESCE(stream, ''), registered_at, projects_synced_at`
 
 func (r *StudentRepository) Save(ctx context.Context, s student.Student) error {
 	_, err := r.db.ExecContext(ctx, `
@@ -78,6 +78,19 @@ func (r *StudentRepository) ReplaceProjects(ctx context.Context, id student.ID, 
 		}
 	}
 	return tx.Commit()
+}
+
+func (r *StudentRepository) SetStream(ctx context.Context, id student.ID, stream string) error {
+	res, err := r.db.ExecContext(ctx, `
+		UPDATE students SET stream = NULLIF(?, ''), updated_at = strftime('%Y-%m-%dT%H:%M:%fZ', 'now')
+		WHERE id = ?`, stream, id)
+	if err != nil {
+		return err
+	}
+	if n, _ := res.RowsAffected(); n == 0 {
+		return fmt.Errorf("student %d: %w", id, student.ErrNotFound)
+	}
+	return nil
 }
 
 func (r *StudentRepository) FindByID(ctx context.Context, id student.ID) (student.Student, error) {
@@ -192,7 +205,7 @@ type scanner interface {
 func scanStudent(row scanner) (student.Student, error) {
 	var s student.Student
 	var registeredAt, syncedAt sql.NullString
-	if err := row.Scan(&s.ID, &s.Login, &s.DisplayName, &s.ImageURL, &s.Staff, &s.Alumni, &registeredAt, &syncedAt); err != nil {
+	if err := row.Scan(&s.ID, &s.Login, &s.DisplayName, &s.ImageURL, &s.Staff, &s.Alumni, &s.Stream, &registeredAt, &syncedAt); err != nil {
 		return student.Student{}, err
 	}
 	var err error

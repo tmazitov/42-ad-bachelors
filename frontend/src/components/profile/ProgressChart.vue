@@ -12,13 +12,21 @@ import {
   electiveModules,
 } from '@/utils/data'
 import ProjectsModal from '@/components/profile/ProjectsModal.vue'
+import StreamModal from '@/components/profile/StreamModal.vue'
 
 ChartJS.register(ArcElement, Tooltip)
 
-const props = defineProps<{ completedProjects: StudentProject[], title?: string, loading?: boolean }>()
+const props = defineProps<{
+  completedProjects: StudentProject[]
+  title?: string
+  loading?: boolean
+  stream?: string | null // chosen stream key
+  own?: boolean // the signed-in student's own progress (can pick a stream)
+}>()
 
 const projectsRef = computed(() => props.completedProjects)
-const progress = useProgress(projectsRef)
+const streamRef = computed(() => props.stream ?? null)
+const progress = useProgress(projectsRef, streamRef)
 
 type ProgressKey = 'general' | 'standard' | 'stream' | 'elective'
 
@@ -68,11 +76,20 @@ const CATEGORIES: CategoryDef[] = [
 
 const selectedCat = ref<CategoryDef | null>(null)
 const modalVisible = ref(false)
+const streamModalVisible = ref(false)
 
 function openModal(cat: CategoryDef) {
   if (props.loading) return
+  if (cat.key === 'stream') {
+    streamModalVisible.value = true
+    return
+  }
   selectedCat.value = cat
   modalVisible.value = true
+}
+
+function categoryLabel(cat: CategoryDef) {
+  return cat.key === 'stream' ? `Stream: ${progress.value.countedStream.name}` : cat.label
 }
 
 const chartData = computed(() => {
@@ -173,7 +190,7 @@ const chartOptions = {
           @click="openModal(cat)"
         >
           <span class="w-2.5 h-2.5 rounded-full shrink-0" :style="{ background: cat.color }" />
-          <span class="w-36 text-gray-600 dark:text-gray-300 shrink-0">{{ cat.label }}</span>
+          <span class="w-36 text-gray-600 dark:text-gray-300 shrink-0 truncate" :title="categoryLabel(cat)">{{ categoryLabel(cat) }}</span>
           <div class="flex-1 h-1.5 rounded-full bg-gray-100 dark:bg-gray-700 overflow-hidden">
             <div
               class="h-full rounded-full transition-all duration-500"
@@ -191,6 +208,16 @@ const chartOptions = {
 
     </div>
   </div>
+
+  <StreamModal
+    v-model:visible="streamModalVisible"
+    :own="own ?? false"
+    :chosen="stream ?? null"
+    :counted="progress.countedStream"
+    :stream-credits="progress.streamCredits"
+    :completed-projects="completedProjects"
+    color="#8b5cf6"
+  />
 
   <ProjectsModal
     v-if="selectedCat"

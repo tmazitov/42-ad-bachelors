@@ -52,7 +52,7 @@ func TestEvaluate(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			got := c.Evaluate(tt.validated)
+			got := c.Evaluate(tt.validated, "")
 			for _, cat := range Categories {
 				if got.Credits[cat] != tt.want[cat] {
 					t.Errorf("%s credits = %d, want %d", cat, got.Credits[cat], tt.want[cat])
@@ -66,8 +66,8 @@ func TestEvaluate(t *testing.T) {
 }
 
 func TestEvaluatePercentage(t *testing.T) {
-	got := ADBachelor().Evaluate(NewProjectSet(1314)) // Libft, 4 credits
-	if want := 3.0; got.Percentage != want {          // 4/132 = 3.03 → 3.0
+	got := ADBachelor().Evaluate(NewProjectSet(1314), "") // Libft, 4 credits
+	if want := 3.0; got.Percentage != want {              // 4/132 = 3.03 → 3.0
 		t.Errorf("percentage = %v, want %v", got.Percentage, want)
 	}
 }
@@ -80,5 +80,78 @@ func TestTeamSetForTrackableModules(t *testing.T) {
 		if !m.Trackable() && m.Team != TeamUnknown {
 			t.Errorf("module %s is not trackable but has team %q", m.Code, m.Team)
 		}
+	}
+}
+
+func TestStreamCredits(t *testing.T) {
+	c := ADBachelor()
+	// 42run (GAM 222, 4) + camagru (WEB 101, 2) + matcha (WEB 202, 3) + Peace_Break (MOB 241, 3, in both
+	// gaming-graphics and mobile-web) + ft_ping (NET 111, 2).
+	validated := NewProjectSet(1387, 1396, 1401, 2552, 1397)
+
+	tests := []struct {
+		name   string
+		chosen string
+		stream string
+		want   int
+	}{
+		{"chosen stream ignores the others", "network-security", "network-security", 2},
+		{"shared module counts in each of its streams", "gaming-graphics", "gaming-graphics", 7},
+		{"not chosen: best stream", "", "mobile-web", 8},
+		{"unknown key behaves as not chosen", "nope", "mobile-web", 8},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			p := c.Evaluate(validated, tt.chosen)
+			if p.Stream != tt.stream || p.Credits[Stream] != tt.want {
+				t.Errorf("stream = %s (%d credits), want %s (%d)", p.Stream, p.Credits[Stream], tt.stream, tt.want)
+			}
+			if p.StreamChosen != (tt.chosen == tt.stream) {
+				t.Errorf("StreamChosen = %v", p.StreamChosen)
+			}
+		})
+	}
+
+	p := c.Evaluate(validated, "")
+	want := map[string]int{"gaming-graphics": 7, "mobile-web": 8, "kernel-systems": 0, "network-security": 2}
+	for k, v := range want {
+		if p.StreamCredits[k] != v {
+			t.Errorf("StreamCredits[%s] = %d, want %d", k, p.StreamCredits[k], v)
+		}
+	}
+}
+
+func TestStreamCreditsCappedAndTieGoesToFirst(t *testing.T) {
+	c := ADBachelor()
+	// Nothing validated: every stream has 0, so the first stream is used.
+	if p := c.Evaluate(NewProjectSet(), ""); p.Stream != "gaming-graphics" || p.Credits[Stream] != 0 {
+		t.Errorf("empty: stream = %s, credits = %d", p.Stream, p.Credits[Stream])
+	}
+
+	// All of Kernel and Systems: 3+3+2+2+2+3+2 = 17, capped at 14.
+	all := NewProjectSet(1416, 1421, 1415, 1479, 1330, 1381, 2606)
+	p := c.Evaluate(all, "kernel-systems")
+	if p.StreamCredits["kernel-systems"] != 17 || p.Credits[Stream] != 14 {
+		t.Errorf("kernel-systems = %d uncapped, %d counted", p.StreamCredits["kernel-systems"], p.Credits[Stream])
+	}
+}
+
+func TestNewValidatesStreams(t *testing.T) {
+	modules := []Module{
+		{"STR 1", "s1", 2, Stream, ids(1), Solo},
+		{"STD 1", "std", 2, Standard, ids(2), Solo},
+	}
+	for name, streams := range map[string][]StreamChoice{
+		"unknown module":        {{"a", "A", []string{"STR 1", "NOPE"}}},
+		"non-stream module":     {{"a", "A", []string{"STR 1", "STD 1"}}},
+		"stream module in none": {{"a", "A", nil}},
+		"duplicate key":         {{"a", "A", []string{"STR 1"}}, {"a", "B", []string{"STR 1"}}},
+	} {
+		if _, err := New(modules, streams); err == nil {
+			t.Errorf("%s: want error", name)
+		}
+	}
+	if _, err := New(modules, []StreamChoice{{"a", "A", []string{"STR 1"}}}); err != nil {
+		t.Errorf("valid: %v", err)
 	}
 }

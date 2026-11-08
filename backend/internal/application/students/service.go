@@ -17,8 +17,12 @@ import (
 	"github.com/tmazitov/42-ad-bachelors/backend/internal/domain/student"
 )
 
-// ErrInvalidLogin means the login is not a valid 42 login.
-var ErrInvalidLogin = errors.New("invalid login")
+var (
+	// ErrInvalidLogin means the login is not a valid 42 login.
+	ErrInvalidLogin = errors.New("invalid login")
+	// ErrUnknownStream means the stream key is not in the curriculum.
+	ErrUnknownStream = errors.New("unknown stream")
+)
 
 // refreshTimeout bounds a 42 refresh, which is shared by concurrent callers
 // and so does not use any single caller's context.
@@ -97,6 +101,21 @@ func (s *Service) ByID(ctx context.Context, id student.ID) (View, error) {
 	return s.fresh(ctx, st.Login, st, true)
 }
 
+// SetStream stores the student's chosen stream and returns their updated view.
+func (s *Service) SetStream(ctx context.Context, id student.ID, stream string) (View, error) {
+	if !s.curriculum.HasStream(stream) {
+		return View{}, ErrUnknownStream
+	}
+	if err := s.students.SetStream(ctx, id, stream); err != nil {
+		return View{}, err
+	}
+	st, err := s.students.FindByID(ctx, id)
+	if err != nil {
+		return View{}, err
+	}
+	return s.view(st), nil
+}
+
 // fresh returns st, refreshing it from 42 first if it is missing or stale.
 // If the refresh fails but stored data exists, the stored data is returned.
 func (s *Service) fresh(ctx context.Context, login string, st student.Student, stored bool) (View, error) {
@@ -152,7 +171,7 @@ func (s *Service) refresh(ctx context.Context, login string) (student.Student, e
 }
 
 func (s *Service) view(st student.Student) View {
-	return View{Student: st, Progress: s.curriculum.Evaluate(st.Validated())}
+	return View{Student: st, Progress: s.curriculum.Evaluate(st.Validated(), st.Stream)}
 }
 
 // SearchResult is one page of matching registered students.

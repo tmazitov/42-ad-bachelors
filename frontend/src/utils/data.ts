@@ -96,3 +96,43 @@ export const allGroups: ProjectGroup[] = [
   streamModules,
   electiveModules,
 ]
+
+// Streams: a student picks one, and only its modules count toward the stream
+// credits (credits from different streams do not add up). Keep in sync with
+// backend/internal/domain/curriculum/ad_bachelor.go.
+export interface StreamDef {
+  key: string
+  name: string
+  projects: Project[]
+}
+
+function streamProjects(codes: string[]): Project[] {
+  return codes.map((code) => {
+    const project = streamModules.projects.find((p) => p.code === code)
+    if (!project) throw new Error(`stream module ${code} not found`)
+    return project
+  })
+}
+
+export const STREAMS: StreamDef[] = [
+  {
+    key: 'gaming-graphics',
+    name: 'Gaming and Graphics',
+    projects: streamProjects(['GAM 222', 'GAM 223', 'GAM 231', 'GAM 301', 'MOB 241', 'ALG 211', 'GFX 121']),
+  },
+  {
+    key: 'mobile-web',
+    name: 'Mobile and Web',
+    projects: streamProjects(['MOB 121', 'MOB 122', 'MOB 211', 'MOB 241', 'WEB 101', 'WEB 202', 'WEB 231', 'SEC 211']),
+  },
+  {
+    key: 'kernel-systems',
+    name: 'Kernel and Systems',
+    projects: streamProjects(['KER 221', 'KER 231', 'SYS 111', 'SYS 112', 'SYS 113', 'SYS 211', 'SYS 221']),
+  },
+  {
+    key: 'network-security',
+    name: 'Network and Security',
+    projects: streamProjects(['NET 111', 'NET 121', 'SEC 221', 'SEC 222', 'SEC 211']),
+  },
+]

@@ -99,6 +99,23 @@ and the frontend either fetches it or keeps a generated copy.
 
 ---
 
+### Streams
+A student picks **one stream**; only its modules count toward the 14 stream credits, and credits from different
+streams do not add up. Until a student picks (`students.stream` is NULL), their **best** stream (most credits;
+ties go to the first stream) is counted. The choice is saved with `PUT /api/v1/me/stream` and can be changed.
+
+| Key | Name | Modules |
+|---|---|---|
+| `gaming-graphics` | Gaming and Graphics | GAM 222, GAM 223, GAM 231, GAM 301, MOB 241, ALG 211, GFX 121 |
+| `mobile-web` | Mobile and Web | MOB 121, MOB 122, MOB 211, MOB 241, WEB 101, WEB 202, WEB 231, SEC 211 |
+| `kernel-systems` | Kernel and Systems | KER 221, KER 231, SYS 111, SYS 112, SYS 113, SYS 211, SYS 221 |
+| `network-security` | Network and Security | NET 111, NET 121, SEC 221, SEC 222, SEC 211 |
+
+MOB 241 and SEC 211 belong to two streams and count in either. The rule lives in `curriculum.Evaluate` (backend)
+and is mirrored in `useProgress.ts` / `STREAMS` in `utils/data.ts` (frontend).
+
+---
+
 ## 4. Cloudflare Worker (`worker/index.js`): what must be reimplemented
 
 The Worker does three jobs.

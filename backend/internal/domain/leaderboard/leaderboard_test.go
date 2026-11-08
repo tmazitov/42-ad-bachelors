@@ -41,3 +41,17 @@ func TestRank(t *testing.T) {
 		}
 	}
 }
+
+func TestRankUsesEachStudentsStream(t *testing.T) {
+	// Both have camagru (mobile-web, 2) and ft_ping + ft_traceroute (network-security, 4).
+	both := []curriculum.ProjectID{1396, 1397, 1399}
+	chose := withProjects("chose", both...)
+	chose.Stream = "mobile-web"           // counts only 2
+	best := withProjects("best", both...) // not chosen: best stream, 4
+
+	entries := Rank(curriculum.ADBachelor(), []student.Student{chose, best})
+	if entries[0].Student.Login != "best" || entries[0].Progress.Total != 4 || entries[1].Progress.Total != 2 {
+		t.Errorf("entries = %s %d, %s %d", entries[0].Student.Login, entries[0].Progress.Total,
+			entries[1].Student.Login, entries[1].Progress.Total)
+	}
+}

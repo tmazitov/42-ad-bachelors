@@ -20,9 +20,16 @@ type categoryResponse struct {
 	Modules         []moduleResponse `json:"modules"`
 }
 
+type streamResponse struct {
+	Key     string   `json:"key"`
+	Name    string   `json:"name"`
+	Modules []string `json:"modules"` // module codes
+}
+
 type curriculumResponse struct {
 	TotalRequiredCredits int                `json:"total_required_credits"`
 	Categories           []categoryResponse `json:"categories"`
+	Streams              []streamResponse   `json:"streams"`
 }
 
 // Curriculum serves the degree's modules grouped by category. The response is
@@ -50,6 +57,10 @@ func Curriculum(c curriculum.Curriculum) fiber.Handler {
 			RequiredCredits: curriculum.RequiredCredits[cat],
 			Modules:         byCategory[cat],
 		})
+	}
+
+	for _, s := range c.Streams() {
+		resp.Streams = append(resp.Streams, streamResponse{Key: s.Key, Name: s.Name, Modules: s.Modules})
 	}
 
 	return func(ctx fiber.Ctx) error {

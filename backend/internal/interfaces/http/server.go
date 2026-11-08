@@ -60,6 +60,7 @@ func NewServer(cfg config.Config, deps Deps) *fiber.App {
 	api.Post("/auth/logout", handlers.Logout(deps.Auth, authCfg))
 
 	api.Get("/me", signedIn, handlers.Me(deps.Students))
+	api.Put("/me/stream", signedIn, handlers.SetMyStream(deps.Students))
 	api.Get("/students", signedIn, handlers.SearchStudents(deps.Students))
 	api.Get("/students/:login", signedIn, handlers.Student(deps.Students))
 	api.Get("/leaderboard", signedIn, handlers.Leaderboard(deps.Progress))

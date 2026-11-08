@@ -4,7 +4,7 @@ package curriculum
 // Keep in sync with frontend/src/utils/data.ts until the frontend reads it
 // from the API.
 func ADBachelor() Curriculum {
-	c, err := New(adBachelorModules)
+	c, err := New(adBachelorModules, adBachelorStreams)
 	if err != nil {
 		panic(err) // static data; covered by tests
 	}
@@ -94,4 +94,16 @@ var adBachelorModules = []Module{
 	{"MOB 111", "Introduction to Mobile Apps (Mobile Piscine)", 2, Elective, ids(2355), Solo},
 	{"SEC 111", "Cybersecurity Fundamentals and Ethical Hacking (Cybersecurity Piscine)", 2, Elective, ids(2346), Solo},
 	{"SYS 223", "Inter-Process Communication in Multiplayer Games (lem-ipc)", 3, Elective, ids(1464), Solo},
+}
+
+// adBachelorStreams are the stream choices (from the curriculum sheet).
+var adBachelorStreams = []StreamChoice{
+	{"gaming-graphics", "Gaming and Graphics",
+		[]string{"GAM 222", "GAM 223", "GAM 231", "GAM 301", "MOB 241", "ALG 211", "GFX 121"}},
+	{"mobile-web", "Mobile and Web",
+		[]string{"MOB 121", "MOB 122", "MOB 211", "MOB 241", "WEB 101", "WEB 202", "WEB 231", "SEC 211"}},
+	{"kernel-systems", "Kernel and Systems",
+		[]string{"KER 221", "KER 231", "SYS 111", "SYS 112", "SYS 113", "SYS 211", "SYS 221"}},
+	{"network-security", "Network and Security",
+		[]string{"NET 111", "NET 121", "SEC 221", "SEC 222", "SEC 211"}},
 }

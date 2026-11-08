@@ -26,6 +26,8 @@ AD Bachelor's credits (132 total). **Read `docs/ARCHITECTURE.md` first** for the
   `worker/index.js` and `backend/internal/domain/curriculum/ad_bachelor.go`. Keep all three in sync until
   the frontend reads `GET /api/v1/curriculum` and the Worker is removed.
 - Credit logic: `frontend/src/composables/useProgress.ts` (each category capped; general is always 0 because there are no IDs).
+  Stream credits only come from the student's chosen stream (`students.stream`), or their best stream until they pick;
+  see `docs/ARCHITECTURE.md` "Streams". Mirrored in backend `curriculum.Evaluate`.
 - The browser only calls the backend (`frontend/src/services/api.ts`, same origin, httpOnly `session` cookie).
   The backend does OAuth, stores students + validated projects in SQLite and refreshes them from 42 when stale.
 - `worker/index.js` (Cloudflare) is the legacy production backend until the VPS deploy.

@@ -20,6 +20,10 @@ type progressResponse struct {
 	Elective   int     `json:"elective"`
 	Total      int     `json:"total"`
 	Percentage float64 `json:"percentage"`
+	// StreamKey is the stream counted in Stream: the chosen one, or the best
+	// one if none is chosen. Streams has the credits earned in every stream.
+	StreamKey string         `json:"stream_key"`
+	Streams   map[string]int `json:"streams"`
 }
 
 type projectResponse struct {
@@ -40,6 +44,7 @@ type studentResponse struct {
 	studentSummary
 	Staff      bool              `json:"staff"`
 	Alumni     bool              `json:"alumni"`
+	Stream     *string           `json:"stream"` // chosen stream key, null if not chosen
 	Registered bool              `json:"registered"`
 	SyncedAt   *time.Time        `json:"synced_at"`
 	Progress   progressResponse  `json:"progress"`
@@ -69,6 +74,29 @@ func Student(svc *students.Service) fiber.Handler {
 			return fiber.NewError(fiber.StatusBadRequest, "invalid login")
 		case errors.Is(err, student.ErrNotFound):
 			return fiber.NewError(fiber.StatusNotFound, "student not found")
+		case err != nil:
+			return err
+		}
+		return c.JSON(toStudentResponse(v))
+	}
+}
+
+// SetMyStream stores the signed-in student's stream:
+// PUT /me/stream {"stream": "<key>"}.
+func SetMyStream(svc *students.Service) fiber.Handler {
+	return func(c fiber.Ctx) error {
+		var req struct {
+			Stream string `json:"stream"`
+		}
+		if err := c.Bind().JSON(&req); err != nil {
+			return fiber.NewError(fiber.StatusBadRequest, "invalid JSON body")
+		}
+		v, err := svc.SetStream(c.Context(), SignedIn(c), req.Stream)
+		switch {
+		case errors.Is(err, students.ErrUnknownStream):
+			return fiber.NewError(fiber.StatusBadRequest, "unknown stream")
+		case errors.Is(err, student.ErrNotFound):
+			return fiber.NewError(fiber.StatusUnauthorized, "not signed in")
 		case err != nil:
 			return err
 		}
@@ -111,6 +139,7 @@ func toStudentResponse(v students.View) studentResponse {
 		studentSummary: toSummary(s),
 		Staff:          s.Staff,
 		Alumni:         s.Alumni,
+		Stream:         optional(s.Stream),
 		Registered:     s.Registered(),
 		SyncedAt:       optionalTime(s.ProjectsSyncedAt),
 		Progress:       toProgress(v.Progress),
@@ -135,6 +164,8 @@ func toProgress(p curriculum.Progress) progressResponse {
 		Elective:   p.Credits[curriculum.Elective],
 		Total:      p.Total,
 		Percentage: p.Percentage,
+		StreamKey:  p.Stream,
+		Streams:    p.StreamCredits,
 	}
 }
 

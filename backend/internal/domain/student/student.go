@@ -33,6 +33,8 @@ type Student struct {
 	ImageURL    string // may be empty
 	Staff       bool
 	Alumni      bool
+	// Stream is the chosen stream's key; empty until the student picks one.
+	Stream string
 
 	// RegisteredAt is when the student first signed in; zero for students
 	// who were only viewed. Only registered students are ranked, searchable
@@ -95,6 +97,8 @@ type Repository interface {
 	// ReplaceProjects stores projects as the student's full list of validated
 	// projects, synced at syncedAt.
 	ReplaceProjects(ctx context.Context, id ID, projects []CompletedProject, syncedAt time.Time) error
+	// SetStream stores the student's chosen stream, or ErrNotFound.
+	SetStream(ctx context.Context, id ID, stream string) error
 	// FindByID and FindByLogin return the student with Projects, or ErrNotFound.
 	FindByID(ctx context.Context, id ID) (Student, error)
 	FindByLogin(ctx context.Context, login string) (Student, error)

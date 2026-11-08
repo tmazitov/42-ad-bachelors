@@ -52,6 +52,18 @@ func (r *memRepo) ReplaceProjects(_ context.Context, id student.ID, p []student.
 	return nil
 }
 
+func (r *memRepo) SetStream(_ context.Context, id student.ID, stream string) error {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	st, ok := r.byID[id]
+	if !ok {
+		return student.ErrNotFound
+	}
+	st.Stream = stream
+	r.byID[id] = st
+	return nil
+}
+
 func (r *memRepo) FindByID(_ context.Context, id student.ID) (student.Student, error) {
 	r.mu.Lock()
 	defer r.mu.Unlock()
@@ -197,5 +209,25 @@ func TestConcurrentRefreshesShareOneLookup(t *testing.T) {
 	wg.Wait()
 	if n := f.lookups.Load(); n != 1 {
 		t.Errorf("42 lookups = %d, want 1", n)
+	}
+}
+
+func TestSetStream(t *testing.T) {
+	alice := student.Student{ID: 1, Login: "alice", DisplayName: "Alice", ProjectsSyncedAt: now,
+		Projects: []student.CompletedProject{{ProjectID: 1396}, {ProjectID: 1397}}} // camagru 2 (mobile-web), ft_ping 2 (network-security)
+	svc := newService(newRepo(alice), &fake42{})
+
+	if _, err := svc.SetStream(context.Background(), 1, "bogus"); !errors.Is(err, ErrUnknownStream) {
+		t.Errorf("bogus stream err = %v, want ErrUnknownStream", err)
+	}
+	v, err := svc.SetStream(context.Background(), 1, "network-security")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if v.Student.Stream != "network-security" || v.Progress.Stream != "network-security" || !v.Progress.StreamChosen {
+		t.Errorf("view = %+v / %+v", v.Student.Stream, v.Progress)
+	}
+	if _, err := svc.SetStream(context.Background(), 99, "mobile-web"); !errors.Is(err, student.ErrNotFound) {
+		t.Errorf("unknown student err = %v, want ErrNotFound", err)
 	}
 }

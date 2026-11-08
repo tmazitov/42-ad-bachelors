@@ -13,6 +13,8 @@ const projects = computed(() => props.student?.projects ?? [])
     <ProgressChart
       :completed-projects="projects"
       :loading="loading || !student"
+      :stream="student?.stream ?? null"
+      :own="own"
       :title="own ? 'Your Progress' : `${student?.login ?? ''}'s Progress`"
     />
   </section>

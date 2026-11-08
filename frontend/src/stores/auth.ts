@@ -47,6 +47,15 @@ export const useAuthStore = defineStore('auth', () => {
     if (e.persisted) redirecting.value = false
   })
 
+  // Saves the signed-in student's stream; the backend returns the updated student.
+  async function setStream(key: string) {
+    user.value = await api<Student>('/me/stream', {
+      method: 'PUT',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ stream: key }),
+    })
+  }
+
   async function logout() {
     try {
       await api('/auth/logout', { method: 'POST' })
@@ -55,5 +64,5 @@ export const useAuthStore = defineStore('auth', () => {
     }
   }
 
-  return { user, loading, checked, redirecting, isLoggedIn, fetchMe, login, logout }
+  return { user, loading, checked, redirecting, isLoggedIn, fetchMe, login, logout, setStream }
 })
