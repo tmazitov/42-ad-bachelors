@@ -18,6 +18,7 @@ const props = defineProps<{
   streamCredits: Record<string, number>
   completedProjects: StudentProject[]
   color: string
+  description?: string
 }>()
 
 const emit = defineEmits<{ 'update:visible': [value: boolean] }>()
@@ -71,6 +72,7 @@ async function choose(key: string) {
     :visible="visible"
     modal
     :draggable="false"
+    :pt="{ header: { style: 'align-items: flex-start' } }"
     :style="{ width: '780px', maxWidth: '95vw' }"
     @update:visible="emit('update:visible', $event)"
   >
@@ -86,15 +88,17 @@ async function choose(key: string) {
 
     <!-- Stream table -->
     <template v-else #header>
-      <div class="flex flex-col sm:flex-row sm:items-center w-full gap-2 sm:gap-4 pr-2">
+      <div class="flex flex-col w-full gap-3 pr-2">
         <div class="flex flex-col gap-1 min-w-0">
           <span class="font-semibold text-lg leading-tight">{{ counted.name }}</span>
+          <span v-if="description" class="text-sm text-gray-500 dark:text-gray-400">{{ description }}</span>
           <span v-if="!chosen" class="text-xs text-gray-500 dark:text-gray-400">
             No stream chosen yet — counting the stream with the most credits.
           </span>
         </div>
 
-        <div class="flex items-center gap-2 sm:ml-auto flex-wrap">
+        <div class="flex items-center gap-2 flex-wrap">
+          <InputText v-model="search" placeholder="Search by name…" size="small" class="w-full sm:w-56" />
           <Button
             v-if="own"
             label="Change"
@@ -103,10 +107,12 @@ async function choose(key: string) {
             text
             @click="changing = true"
           />
-          <InputText v-model="search" placeholder="Search by name…" size="small" class="w-full sm:w-40" />
-          <span class="text-sm text-gray-500 dark:text-gray-400 whitespace-nowrap">{{ earned }} / {{ MAX }} credits</span>
-          <div class="stream-bar sm:w-28" style="min-width: 4rem">
-            <div class="stream-bar__fill" :style="{ width: `${percent}%`, background: color }" />
+          <span class="hidden sm:block flex-1" />
+          <div class="flex items-center gap-2 flex-1 sm:flex-none">
+            <span class="text-sm text-gray-500 dark:text-gray-400 whitespace-nowrap">{{ earned }} / {{ MAX }} credits</span>
+            <div class="stream-bar flex-1 sm:flex-none sm:w-28" style="min-width: 4rem">
+              <div class="stream-bar__fill" :style="{ width: `${percent}%`, background: color }" />
+            </div>
           </div>
         </div>
       </div>

@@ -36,6 +36,7 @@ interface CategoryDef {
   color: string
   max: number
   unit: string
+  description: string
   projects: Project[]
 }
 
@@ -46,6 +47,7 @@ const CATEGORIES: CategoryDef[] = [
     color: '#22c55e',
     max: CREDITS_REQUIRED.general,
     unit: 'credits',
+    description: "University courses on general skills (GEN 101, 201, 301). They are not 42 projects, so they can't be tracked here.",
     projects: generalEducationModules.projects,
   },
   {
@@ -54,6 +56,7 @@ const CATEGORIES: CategoryDef[] = [
     color: '#3b82f6',
     max: CREDITS_REQUIRED.standard,
     unit: 'credits',
+    description: 'Required for every student: the 42 common core (Libft to ft_transcendence), plus AI and data science projects (Python for Data Science to Leaffliction), maths projects (computorv1, matrix), ft_resume, the internship and the capstone.',
     projects: standardModules.projects,
   },
   {
@@ -62,6 +65,7 @@ const CATEGORIES: CategoryDef[] = [
     color: '#8b5cf6',
     max: CREDITS_REQUIRED.stream,
     unit: 'credits',
+    description: "Your specialisation. Pick one stream; only its modules count, and credits from different streams don't add up.",
     projects: streamModules.projects,
   },
   {
@@ -70,6 +74,7 @@ const CATEGORIES: CategoryDef[] = [
     color: '#f97316',
     max: CREDITS_REQUIRED.elective,
     unit: 'credits',
+    description: 'Free-choice projects outside the core and your stream. Any of them counts, up to 12 credits.',
     projects: electiveModules.projects,
   },
 ]
@@ -217,6 +222,7 @@ const chartOptions = {
     :stream-credits="progress.streamCredits"
     :completed-projects="completedProjects"
     color="#8b5cf6"
+    :description="CATEGORIES.find((c) => c.key === 'stream')?.description"
   />
 
   <ProjectsModal
@@ -227,6 +233,7 @@ const chartOptions = {
     :earned="progress[selectedCat.key]"
     :max="selectedCat.max"
     :unit="selectedCat.unit"
+    :description="selectedCat.description"
     :projects="selectedCat.projects"
     :completed-projects="completedProjects"
   />
