@@ -1,0 +1,12 @@
+# Run the production stack on your own machine. compose.yaml publishes no
+# ports (Coolify routes to nginx itself); this override publishes only nginx,
+# on localhost. The frontend and backend stay unreachable.
+#
+#   PUBLIC_URL=http://localhost:8088 docker compose -f compose.yaml -f compose.local.yaml up -d --build
+#
+# Register http://localhost:8088/auth/callback on the 42 app.
+
+services:
+  nginx:
+    ports:
+      - "127.0.0.1:8088:${NGINX_PORT:-8088}"

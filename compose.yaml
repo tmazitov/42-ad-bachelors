@@ -1,14 +1,14 @@
 # Production stack (e.g. on Coolify):
 #   nginx    — the only entry point; routes /api/* to the backend and
 #              everything else to the frontend. Plain HTTP on NGINX_PORT
-#              (default 8000): the platform's proxy (Coolify) terminates TLS
+#              (default 8088): the platform's proxy (Coolify) terminates TLS
 #              and forwards to it.
 #   frontend — static SPA; reachable only from nginx (network `web`).
 #   backend  — Go API + SQLite (backend-data volume); reachable only from
 #              nginx (network `api`), with outbound internet for the 42 API.
 #
 # No service publishes host ports. In Coolify, assign the domain to the
-# `nginx` service with its port, e.g. https://bachelors.example.com:8000
+# `nginx` service with its port, e.g. https://bachelors.example.com:8088
 # (the port tells Coolify's proxy where nginx listens; users still use 443),
 # and fill in the environment variables below
 # (see .env.example). Register PUBLIC_URL/auth/callback on the 42 app.
@@ -17,9 +17,9 @@ services:
   nginx:
     build: ./deploy/nginx
     environment:
-      NGINX_PORT: ${NGINX_PORT:-8000}
+      NGINX_PORT: ${NGINX_PORT:-8088}
     expose:
-      - "${NGINX_PORT:-8000}"
+      - "${NGINX_PORT:-8088}"
     networks:
       - web
       - api
