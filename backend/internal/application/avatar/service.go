@@ -66,6 +66,10 @@ func (s *Service) Get(ctx context.Context, rawURL string) (Image, error) {
 	if !isAllowed(rawURL) {
 		return Image{}, ErrInvalidURL
 	}
+	// The URL is kept as a cache key, so it must not share memory with the
+	// caller: HTTP frameworks such as Fiber reuse request buffers, which would
+	// later turn this key into another user's URL.
+	rawURL = strings.Clone(rawURL)
 
 	if img, ok := s.cached(rawURL); ok {
 		return img, nil

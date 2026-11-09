@@ -38,7 +38,11 @@ type Deps struct {
 // NewServer builds the Fiber app with middleware and routes.
 func NewServer(cfg config.Config, deps Deps) *fiber.App {
 	app := fiber.New(fiber.Config{
-		AppName:      "42-ad-bachelors",
+		AppName: "42-ad-bachelors",
+		// Copy request values (params, query, cookies) instead of pointing
+		// into buffers that Fiber reuses for the next request; services keep
+		// some of them, e.g. as cache keys.
+		Immutable:    true,
 		ErrorHandler: errorHandler(deps.Log),
 	})
 

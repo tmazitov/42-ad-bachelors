@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"testing"
+	"unsafe"
 )
 
 type countingSource struct{ calls int }
@@ -46,5 +47,40 @@ func TestGetCaches(t *testing.T) {
 	}
 	if src.calls != 1 {
 		t.Errorf("source called %d times, want 1", src.calls)
+	}
+}
+
+type echoSource struct{}
+
+func (echoSource) Image(_ context.Context, u string) (Image, error) {
+	return Image{ContentType: "image/jpeg", Data: []byte(u)}, nil
+}
+
+// A caller may pass a string backed by a buffer it reuses later (Fiber does
+// this with query values). The cache must not pick up the new contents.
+func TestCacheKeyDoesNotAliasCaller(t *testing.T) {
+	svc := NewService(echoSource{})
+	const a = "https://cdn.intra.42.fr/users/aaaa/medium_alice.jpg"
+	const b = "https://cdn.intra.42.fr/users/bbbb/medium_bobby.jpg"
+	buf := []byte(a)
+	if _, err := svc.Get(context.Background(), unsafe.String(&buf[0], len(buf))); err != nil {
+		t.Fatal(err)
+	}
+	copy(buf, b) // the buffer is reused for the next request
+
+	img, err := svc.Get(context.Background(), b)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if string(img.Data) != b {
+		t.Errorf("got the image of %s for %s", img.Data, b)
+	}
+	for k := range svc.cache {
+		if k != a && k != b {
+			t.Errorf("unexpected cache key %q", k)
+		}
+	}
+	if _, ok := svc.cache[a]; !ok {
+		t.Error("entry for the first URL lost its key")
 	}
 }
