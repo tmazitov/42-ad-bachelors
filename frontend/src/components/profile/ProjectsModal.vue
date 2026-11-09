@@ -15,6 +15,8 @@ const props = defineProps<{
   description?: string
   projects: Project[]
   completedProjects: StudentProject[]
+  markedModules?: string[]
+  own?: boolean
 }>()
 
 const emit = defineEmits<{ 'update:visible': [value: boolean] }>()
@@ -63,6 +65,12 @@ const search = ref('')
       </div>
     </template>
 
-    <ProjectsTable :projects="projects" :completed-projects="completedProjects" :search="search" />
+    <ProjectsTable
+      :projects="projects"
+      :completed-projects="completedProjects"
+      :marked-modules="markedModules"
+      :own="own"
+      :search="search"
+    />
   </Dialog>
 </template>

@@ -114,6 +114,15 @@ ties go to the first stream) is counted. The choice is saved with `PUT /api/v1/m
 MOB 241 and SEC 211 belong to two streams and count in either. The rule lives in `curriculum.Evaluate` (backend)
 and is mirrored in `useProgress.ts` / `STREAMS` in `utils/data.ts` (frontend).
 
+### Self-reported modules
+Some results are recorded by the Learning Team on ATRIUM (atrium.aevsoft.cc), not on 42: **GEN 101, GEN 201,
+GEN 301, BAI 498, BAI 499**, plus **ARI 111** (42 does not mark Python for Data Science validated even when all its
+modules are done). ATRIUM has no API, so students tick these themselves in the Status column of their own project
+tables (`PUT /api/v1/me/modules {"code","completed"}`, stored in `student_marked_modules`). A ticked module counts
+like a validated one everywhere, including the leaderboard; other students see it marked as self-reported. The table
+links to the student's ATRIUM study plan so they can check. The list lives in `adBachelorSelfReported` (backend)
+and `SELF_REPORTED` in `utils/data.ts` (frontend).
+
 ---
 
 ## 4. Cloudflare Worker (`worker/index.js`): what must be reimplemented

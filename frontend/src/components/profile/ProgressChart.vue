@@ -21,12 +21,14 @@ const props = defineProps<{
   title?: string
   loading?: boolean
   stream?: string | null // chosen stream key
-  own?: boolean // the signed-in student's own progress (can pick a stream)
+  own?: boolean // the signed-in student's own progress (can pick a stream, mark modules)
+  markedModules?: string[] // self-reported modules marked completed
 }>()
 
 const projectsRef = computed(() => props.completedProjects)
 const streamRef = computed(() => props.stream ?? null)
-const progress = useProgress(projectsRef, streamRef)
+const markedRef = computed(() => props.markedModules ?? [])
+const progress = useProgress(projectsRef, streamRef, markedRef)
 
 type ProgressKey = 'general' | 'standard' | 'stream' | 'elective'
 
@@ -236,6 +238,8 @@ const chartOptions = {
     :description="selectedCat.description"
     :projects="selectedCat.projects"
     :completed-projects="completedProjects"
+    :marked-modules="markedModules ?? []"
+    :own="own ?? false"
   />
 </template>
 

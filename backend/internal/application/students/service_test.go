@@ -64,6 +64,27 @@ func (r *memRepo) SetStream(_ context.Context, id student.ID, stream string) err
 	return nil
 }
 
+func (r *memRepo) SetModuleMark(_ context.Context, id student.ID, code string, completed bool) error {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	st, ok := r.byID[id]
+	if !ok {
+		return student.ErrNotFound
+	}
+	marks := []string{}
+	for _, c := range st.MarkedModules {
+		if c != code {
+			marks = append(marks, c)
+		}
+	}
+	if completed {
+		marks = append(marks, code)
+	}
+	st.MarkedModules = marks
+	r.byID[id] = st
+	return nil
+}
+
 func (r *memRepo) FindByID(_ context.Context, id student.ID) (student.Student, error) {
 	r.mu.Lock()
 	defer r.mu.Unlock()
@@ -228,6 +249,29 @@ func TestSetStream(t *testing.T) {
 		t.Errorf("view = %+v / %+v", v.Student.Stream, v.Progress)
 	}
 	if _, err := svc.SetStream(context.Background(), 99, "mobile-web"); !errors.Is(err, student.ErrNotFound) {
+		t.Errorf("unknown student err = %v, want ErrNotFound", err)
+	}
+}
+
+func TestMarkModule(t *testing.T) {
+	alice := student.Student{ID: 1, Login: "alice", DisplayName: "Alice", ProjectsSyncedAt: now}
+	svc := newService(newRepo(alice), &fake42{})
+	ctx := context.Background()
+
+	if _, err := svc.MarkModule(ctx, 1, "CCP 101", true); !errors.Is(err, ErrNotSelfReported) {
+		t.Errorf("CCP 101 err = %v, want ErrNotSelfReported", err)
+	}
+	v, err := svc.MarkModule(ctx, 1, "GEN 201", true)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if v.Progress.Credits[curriculum.General] != 2 {
+		t.Errorf("general = %d, want 2", v.Progress.Credits[curriculum.General])
+	}
+	if v, _ = svc.MarkModule(ctx, 1, "GEN 201", false); v.Progress.Credits[curriculum.General] != 0 {
+		t.Errorf("general after unmark = %d, want 0", v.Progress.Credits[curriculum.General])
+	}
+	if _, err := svc.MarkModule(ctx, 99, "GEN 101", true); !errors.Is(err, student.ErrNotFound) {
 		t.Errorf("unknown student err = %v, want ErrNotFound", err)
 	}
 }

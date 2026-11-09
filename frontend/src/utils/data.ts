@@ -100,6 +100,15 @@ export const allGroups: ProjectGroup[] = [
 // Streams: a student picks one, and only its modules count toward the stream
 // credits (credits from different streams do not add up). Keep in sync with
 // backend/internal/domain/curriculum/ad_bachelor.go.
+// Modules the student marks completed themselves: their results are recorded
+// outside 42 by the Learning Team (on ATRIUM). ARI 111 is here because 42 does
+// not mark Python for Data Science validated even when all its modules are done.
+// Mirrors adBachelorSelfReported in the backend.
+export const SELF_REPORTED = new Set(['GEN 101', 'GEN 201', 'GEN 301', 'ARI 111', 'BAI 498', 'BAI 499'])
+
+// Where students can check those results.
+export const ATRIUM_STUDY_PLAN_URL = 'https://atrium.aevsoft.cc/student/study_plan.php'
+
 export interface StreamDef {
   key: string
   name: string

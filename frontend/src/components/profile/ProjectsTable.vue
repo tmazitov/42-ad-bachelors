@@ -1,16 +1,41 @@
 <script setup lang="ts">
 import { computed, ref } from 'vue'
-import { DataTable, Column } from 'primevue'
+import { DataTable, Column, Checkbox } from 'primevue'
 import type { Project, Team } from '@/models/Project'
 import type { StudentProject } from '@/models/Student'
-import { isCompleted } from '@/composables/useProgress'
+import { isCompletedOn42 } from '@/composables/useProgress'
+import { SELF_REPORTED, ATRIUM_STUDY_PLAN_URL } from '@/utils/data'
+import { useAuthStore } from '@/stores/auth'
 
-// Table of bachelor modules with the student's completion status.
+// Table of bachelor modules with the student's completion status. Modules
+// recorded outside 42 (SELF_REPORTED) can be ticked by the student on their
+// own profile.
 const props = defineProps<{
   projects: Project[]
   completedProjects: StudentProject[]
+  markedModules?: string[]
+  own?: boolean // the signed-in student's own table: self-reported modules are tickable
   search?: string // filters by name or code
 }>()
+
+const auth = useAuthStore()
+const saving = ref<string | null>(null)
+const error = ref<string | null>(null)
+
+const markedSet = computed(() => new Set(props.markedModules ?? []))
+const hasSelfReported = computed(() => props.projects.some((p) => SELF_REPORTED.has(p.code)))
+
+async function toggle(code: string, completed: boolean) {
+  saving.value = code
+  error.value = null
+  try {
+    await auth.markModule(code, completed)
+  } catch (e) {
+    error.value = e instanceof Error ? e.message : 'Could not save'
+  } finally {
+    saving.value = null
+  }
+}
 
 const completedIds = computed(() => new Set(props.completedProjects.map((p) => p.project_id)))
 
@@ -30,12 +55,18 @@ const rows = computed(() =>
     const url = primaryId !== null
       ? `https://projects.intra.42.fr/projects/${slug ?? primaryId}`
       : null
+    const on42 = isCompletedOn42(p, completedIds.value)
+    const selfReported = SELF_REPORTED.has(p.code)
+    const marked = selfReported && markedSet.value.has(p.code)
     return {
       code: p.code,
       name: p.name,
       credit: p.credit,
       team: p.team,
-      done: isCompleted(p, completedIds.value),
+      on42,
+      selfReported,
+      marked,
+      done: on42 || marked,
       trackable: p.id !== null,
       url,
     }
@@ -58,6 +89,18 @@ const sortOrder = ref<1 | -1>(1)
 </script>
 
 <template>
+  <div v-if="hasSelfReported" class="self-note">
+    <i class="pi pi-info-circle" />
+    <span v-if="own">
+      Courses marked by the Learning Team, not 42, can be ticked in the Status column.
+      <a :href="ATRIUM_STUDY_PLAN_URL" target="_blank" rel="noopener noreferrer">Check them on ATRIUM&nbsp;↗</a>
+    </span>
+    <span v-else>
+      Courses with <i class="pi pi-user-edit" /> were ticked by the student and are not checked by 42.
+    </span>
+  </div>
+  <p v-if="error" class="text-sm text-red-500 mb-2">{{ error }}</p>
+
   <DataTable
     :value="filteredRows"
     :sort-field="sortField"
@@ -98,14 +141,52 @@ const sortOrder = ref<1 | -1>(1)
     </Column>
     <Column field="done" header="Status" :sortable="true" style="width: 5.5rem">
       <template #body="{ data }">
-        <span v-if="data.done">✅</span>
-        <span v-else-if="!data.trackable" class="text-gray-300 text-xs">N/A</span>
+        <span v-if="data.on42">✅</span>
+        <Checkbox
+          v-else-if="data.selfReported && own"
+          :model-value="data.marked"
+          binary
+          :disabled="saving !== null"
+          :aria-label="`Mark ${data.code} completed`"
+          @update:model-value="(v: boolean) => toggle(data.code, v)"
+        />
+        <span v-else-if="data.marked" class="whitespace-nowrap" title="Ticked by the student, not checked by 42">
+          ✅ <i class="pi pi-user-edit self-icon" />
+        </span>
+        <span v-else-if="!data.trackable && !data.selfReported" class="text-gray-300 text-xs">N/A</span>
       </template>
     </Column>
   </DataTable>
 </template>
 
 <style scoped>
+.self-note {
+  display: flex;
+  align-items: baseline;
+  gap: 0.5rem;
+  margin-bottom: 0.75rem;
+  padding: 0.5rem 0.75rem;
+  border: 1px solid var(--card-border);
+  border-radius: 0.75rem;
+  font-size: 0.8rem;
+  color: var(--p-text-muted-color, #6b7280);
+}
+
+.self-note a {
+  color: var(--p-primary-color, #10b981);
+  text-decoration: none;
+  white-space: nowrap;
+}
+
+.self-note a:hover {
+  text-decoration: underline;
+}
+
+.self-icon {
+  font-size: 0.75rem;
+  color: var(--p-text-muted-color, #9ca3af);
+}
+
 .team-badge {
   display: inline-flex;
   align-items: center;

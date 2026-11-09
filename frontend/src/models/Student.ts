@@ -29,6 +29,7 @@ export interface Student extends StudentSummary {
   staff: boolean
   alumni: boolean
   stream: string | null // chosen stream key; null until the student picks one
+  marked_modules: string[] // self-reported modules the student marked completed
   registered: boolean
   synced_at: string | null
   progress: Progress

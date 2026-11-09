@@ -18,6 +18,8 @@ const error = ref<string | null>(null)
 
 const avatarUrl = computed(() => proxiedImage(student.value?.image))
 const isOwn = computed(() => !!student.value && student.value.id === auth.user?.id)
+// On your own profile, show the signed-in copy: stream and module ticks update it.
+const shown = computed(() => (isOwn.value ? auth.user : student.value))
 
 watch(
   () => route.params.login as string,
@@ -90,7 +92,7 @@ watch(
         </div>
       </div>
 
-      <Profile :student="student" :own="isOwn" />
+      <Profile :student="shown" :own="isOwn" />
     </template>
   </main>
 </template>

@@ -14,6 +14,7 @@ const projects = computed(() => props.student?.projects ?? [])
       :completed-projects="projects"
       :loading="loading || !student"
       :stream="student?.stream ?? null"
+      :marked-modules="student?.marked_modules ?? []"
       :own="own"
       :title="own ? 'Your Progress' : `${student?.login ?? ''}'s Progress`"
     />

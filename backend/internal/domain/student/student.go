@@ -35,6 +35,9 @@ type Student struct {
 	Alumni      bool
 	// Stream is the chosen stream's key; empty until the student picks one.
 	Stream string
+	// MarkedModules are the codes of modules the student marked completed
+	// themselves (set by Find* and ListSynced).
+	MarkedModules []string
 
 	// RegisteredAt is when the student first signed in; zero for students
 	// who were only viewed. Only registered students are ranked, searchable
@@ -88,6 +91,15 @@ func (s Student) Validated() curriculum.ProjectSet {
 	return set
 }
 
+// Marked returns the set of modules the student marked completed.
+func (s Student) Marked() curriculum.ModuleSet {
+	set := make(curriculum.ModuleSet, len(s.MarkedModules))
+	for _, code := range s.MarkedModules {
+		set[code] = true
+	}
+	return set
+}
+
 // Repository persists students.
 type Repository interface {
 	// Save inserts the student's profile or updates the stored one with the
@@ -99,6 +111,9 @@ type Repository interface {
 	ReplaceProjects(ctx context.Context, id ID, projects []CompletedProject, syncedAt time.Time) error
 	// SetStream stores the student's chosen stream, or ErrNotFound.
 	SetStream(ctx context.Context, id ID, stream string) error
+	// SetModuleMark marks a module completed (or unmarks it) for the
+	// student, or returns ErrNotFound.
+	SetModuleMark(ctx context.Context, id ID, code string, completed bool) error
 	// FindByID and FindByLogin return the student with Projects, or ErrNotFound.
 	FindByID(ctx context.Context, id ID) (Student, error)
 	FindByLogin(ctx context.Context, login string) (Student, error)

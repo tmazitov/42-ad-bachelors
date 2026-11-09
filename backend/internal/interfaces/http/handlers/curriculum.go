@@ -12,6 +12,8 @@ type moduleResponse struct {
 	Credits    int    `json:"credits"`
 	ProjectIDs []int  `json:"project_ids"`
 	Team       string `json:"team,omitempty"`
+	// SelfReported modules are marked completed by the student.
+	SelfReported bool `json:"self_reported,omitempty"`
 }
 
 type categoryResponse struct {
@@ -42,11 +44,12 @@ func Curriculum(c curriculum.Curriculum) fiber.Handler {
 			ids[i] = int(id)
 		}
 		byCategory[m.Category] = append(byCategory[m.Category], moduleResponse{
-			Code:       m.Code,
-			Name:       m.Name,
-			Credits:    m.Credits,
-			ProjectIDs: ids,
-			Team:       string(m.Team),
+			Code:         m.Code,
+			Name:         m.Name,
+			Credits:      m.Credits,
+			ProjectIDs:   ids,
+			Team:         string(m.Team),
+			SelfReported: c.SelfReported(m.Code),
 		})
 	}
 

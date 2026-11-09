@@ -4,7 +4,7 @@ package curriculum
 // Keep in sync with frontend/src/utils/data.ts until the frontend reads it
 // from the API.
 func ADBachelor() Curriculum {
-	c, err := New(adBachelorModules, adBachelorStreams)
+	c, err := New(adBachelorModules, adBachelorStreams, adBachelorSelfReported)
 	if err != nil {
 		panic(err) // static data; covered by tests
 	}
@@ -97,6 +97,11 @@ var adBachelorModules = []Module{
 }
 
 // adBachelorStreams are the stream choices (from the curriculum sheet).
+// Modules whose results the Learning Team records outside 42 (on ATRIUM):
+// the GEN courses, the capstone and the internship, plus Python for Data
+// Science, which 42 does not mark validated even when all its modules are done.
+var adBachelorSelfReported = []string{"GEN 101", "GEN 201", "GEN 301", "ARI 111", "BAI 498", "BAI 499"}
+
 var adBachelorStreams = []StreamChoice{
 	{"gaming-graphics", "Gaming and Graphics",
 		[]string{"GAM 222", "GAM 223", "GAM 231", "GAM 301", "MOB 241", "ALG 211", "GFX 121"}},

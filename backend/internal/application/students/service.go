@@ -22,6 +22,9 @@ var (
 	ErrInvalidLogin = errors.New("invalid login")
 	// ErrUnknownStream means the stream key is not in the curriculum.
 	ErrUnknownStream = errors.New("unknown stream")
+	// ErrNotSelfReported means the module cannot be marked completed by the
+	// student (unknown, or tracked through 42 only).
+	ErrNotSelfReported = errors.New("module cannot be marked by the student")
 )
 
 // refreshTimeout bounds a 42 refresh, which is shared by concurrent callers
@@ -116,6 +119,22 @@ func (s *Service) SetStream(ctx context.Context, id student.ID, stream string) (
 	return s.view(st), nil
 }
 
+// MarkModule marks a self-reported module completed (or unmarks it) for the
+// student and returns their updated view.
+func (s *Service) MarkModule(ctx context.Context, id student.ID, code string, completed bool) (View, error) {
+	if !s.curriculum.SelfReported(code) {
+		return View{}, ErrNotSelfReported
+	}
+	if err := s.students.SetModuleMark(ctx, id, code, completed); err != nil {
+		return View{}, err
+	}
+	st, err := s.students.FindByID(ctx, id)
+	if err != nil {
+		return View{}, err
+	}
+	return s.view(st), nil
+}
+
 // fresh returns st, refreshing it from 42 first if it is missing or stale.
 // If the refresh fails but stored data exists, the stored data is returned.
 func (s *Service) fresh(ctx context.Context, login string, st student.Student, stored bool) (View, error) {
@@ -171,7 +190,7 @@ func (s *Service) refresh(ctx context.Context, login string) (student.Student, e
 }
 
 func (s *Service) view(st student.Student) View {
-	return View{Student: st, Progress: s.curriculum.Evaluate(st.Validated(), st.Stream)}
+	return View{Student: st, Progress: s.curriculum.Evaluate(st.Validated(), st.Marked(), st.Stream)}
 }
 
 // SearchResult is one page of matching registered students.

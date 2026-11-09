@@ -1,7 +1,7 @@
 import { computed, type Ref } from 'vue'
 import type { StudentProject } from '@/models/Student'
 import type { Project } from '@/models/Project'
-import { generalEducationModules, standardModules, electiveModules, STREAMS, type StreamDef } from '@/utils/data'
+import { generalEducationModules, standardModules, electiveModules, STREAMS, SELF_REPORTED, type StreamDef } from '@/utils/data'
 
 export const CREDITS_REQUIRED = {
   general:   5,
@@ -11,14 +11,20 @@ export const CREDITS_REQUIRED = {
   total:   132,
 } as const
 
-export function isCompleted(project: Project, ids: Set<number>): boolean {
+// isCompletedOn42 reports whether one of the module's projects is validated.
+export function isCompletedOn42(project: Project, ids: Set<number>): boolean {
   if (project.id === null) return false
   if (typeof project.id === 'number') return ids.has(project.id)
   return project.id.some((id) => ids.has(id))
 }
 
-function credits(projects: Project[], ids: Set<number>): number {
-  return projects.filter((p) => isCompleted(p, ids)).reduce((s, p) => s + p.credit, 0)
+// isCompleted also counts self-reported modules the student marked completed.
+export function isCompleted(project: Project, ids: Set<number>, marked?: Set<string>): boolean {
+  return isCompletedOn42(project, ids) || (SELF_REPORTED.has(project.code) && !!marked?.has(project.code))
+}
+
+function credits(projects: Project[], ids: Set<number>, marked: Set<string>): number {
+  return projects.filter((p) => isCompleted(p, ids, marked)).reduce((s, p) => s + p.credit, 0)
 }
 
 // The stream counted for the stream credits: the chosen one, or (until the
@@ -31,32 +37,38 @@ export function countedStream(chosen: string | null, streamCredits: Record<strin
 }
 
 // completedProjects are the student's validated projects; streamKey is their
-// chosen stream (null if not chosen yet).
-export function useProgress(completedProjects: Ref<StudentProject[]>, streamKey: Ref<string | null>) {
+// chosen stream (null if not chosen yet); markedModules are the self-reported
+// modules they marked completed.
+export function useProgress(
+  completedProjects: Ref<StudentProject[]>,
+  streamKey: Ref<string | null>,
+  markedModules: Ref<string[]>,
+) {
   return computed(() => {
     const ids = new Set(completedProjects.value.map((p) => p.project_id))
+    const marked = new Set(markedModules.value)
 
     const general = Math.min(
       generalEducationModules.projects
-        .filter((p) => isCompleted(p, ids))
+        .filter((p) => isCompleted(p, ids, marked))
         .reduce((s, p) => s + p.credit, 0),
       CREDITS_REQUIRED.general,
     )
 
     const standard = Math.min(
       standardModules.projects
-        .filter((p) => isCompleted(p, ids))
+        .filter((p) => isCompleted(p, ids, marked))
         .reduce((s, p) => s + p.credit, 0),
       CREDITS_REQUIRED.standard,
     )
 
     const streamCredits: Record<string, number> = {}
-    for (const s of STREAMS) streamCredits[s.key] = credits(s.projects, ids)
+    for (const s of STREAMS) streamCredits[s.key] = credits(s.projects, ids, marked)
     const counted = countedStream(streamKey.value, streamCredits)
     const stream = Math.min(streamCredits[counted.key] ?? 0, CREDITS_REQUIRED.stream)
 
     const elective = Math.min(
-      electiveModules.projects.filter((p) => isCompleted(p, ids)).reduce((s, p) => s + p.credit, 0),
+      electiveModules.projects.filter((p) => isCompleted(p, ids, marked)).reduce((s, p) => s + p.credit, 0),
       CREDITS_REQUIRED.elective,
     )
 

@@ -42,13 +42,15 @@ type studentSummary struct {
 type studentResponse struct {
 	ID int `json:"id"`
 	studentSummary
-	Staff      bool              `json:"staff"`
-	Alumni     bool              `json:"alumni"`
-	Stream     *string           `json:"stream"` // chosen stream key, null if not chosen
-	Registered bool              `json:"registered"`
-	SyncedAt   *time.Time        `json:"synced_at"`
-	Progress   progressResponse  `json:"progress"`
-	Projects   []projectResponse `json:"projects"`
+	Staff  bool    `json:"staff"`
+	Alumni bool    `json:"alumni"`
+	Stream *string `json:"stream"` // chosen stream key, null if not chosen
+	// MarkedModules are module codes the student marked completed themselves.
+	MarkedModules []string          `json:"marked_modules"`
+	Registered    bool              `json:"registered"`
+	SyncedAt      *time.Time        `json:"synced_at"`
+	Progress      progressResponse  `json:"progress"`
+	Projects      []projectResponse `json:"projects"`
 }
 
 // Me returns the signed-in student with progress and validated projects.
@@ -104,6 +106,30 @@ func SetMyStream(svc *students.Service) fiber.Handler {
 	}
 }
 
+// MarkMyModule marks a self-reported module completed or not for the signed-in
+// student: PUT /me/modules {"code": "GEN 101", "completed": true}.
+func MarkMyModule(svc *students.Service) fiber.Handler {
+	return func(c fiber.Ctx) error {
+		var req struct {
+			Code      string `json:"code"`
+			Completed bool   `json:"completed"`
+		}
+		if err := c.Bind().JSON(&req); err != nil {
+			return fiber.NewError(fiber.StatusBadRequest, "invalid JSON body")
+		}
+		v, err := svc.MarkModule(c.Context(), SignedIn(c), req.Code, req.Completed)
+		switch {
+		case errors.Is(err, students.ErrNotSelfReported):
+			return fiber.NewError(fiber.StatusBadRequest, "this module cannot be marked by the student")
+		case errors.Is(err, student.ErrNotFound):
+			return fiber.NewError(fiber.StatusUnauthorized, "not signed in")
+		case err != nil:
+			return err
+		}
+		return c.JSON(toStudentResponse(v))
+	}
+}
+
 type searchResponse struct {
 	Students []studentSummary `json:"students"`
 	Total    int              `json:"total"`
@@ -140,6 +166,7 @@ func toStudentResponse(v students.View) studentResponse {
 		Staff:          s.Staff,
 		Alumni:         s.Alumni,
 		Stream:         optional(s.Stream),
+		MarkedModules:  append([]string{}, s.MarkedModules...),
 		Registered:     s.Registered(),
 		SyncedAt:       optionalTime(s.ProjectsSyncedAt),
 		Progress:       toProgress(v.Progress),

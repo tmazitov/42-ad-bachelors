@@ -56,6 +56,15 @@ export const useAuthStore = defineStore('auth', () => {
     })
   }
 
+  // Marks a self-reported module completed (or not); returns the updated student.
+  async function markModule(code: string, completed: boolean) {
+    user.value = await api<Student>('/me/modules', {
+      method: 'PUT',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ code, completed }),
+    })
+  }
+
   async function logout() {
     try {
       await api('/auth/logout', { method: 'POST' })
@@ -64,5 +73,5 @@ export const useAuthStore = defineStore('auth', () => {
     }
   }
 
-  return { user, loading, checked, redirecting, isLoggedIn, fetchMe, login, logout, setStream }
+  return { user, loading, checked, redirecting, isLoggedIn, fetchMe, login, logout, setStream, markModule }
 })

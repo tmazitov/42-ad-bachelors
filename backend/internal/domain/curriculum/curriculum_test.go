@@ -52,7 +52,7 @@ func TestEvaluate(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			got := c.Evaluate(tt.validated, "")
+			got := c.Evaluate(tt.validated, nil, "")
 			for _, cat := range Categories {
 				if got.Credits[cat] != tt.want[cat] {
 					t.Errorf("%s credits = %d, want %d", cat, got.Credits[cat], tt.want[cat])
@@ -66,8 +66,8 @@ func TestEvaluate(t *testing.T) {
 }
 
 func TestEvaluatePercentage(t *testing.T) {
-	got := ADBachelor().Evaluate(NewProjectSet(1314), "") // Libft, 4 credits
-	if want := 3.0; got.Percentage != want {              // 4/132 = 3.03 → 3.0
+	got := ADBachelor().Evaluate(NewProjectSet(1314), nil, "") // Libft, 4 credits
+	if want := 3.0; got.Percentage != want {                   // 4/132 = 3.03 → 3.0
 		t.Errorf("percentage = %v, want %v", got.Percentage, want)
 	}
 }
@@ -102,7 +102,7 @@ func TestStreamCredits(t *testing.T) {
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			p := c.Evaluate(validated, tt.chosen)
+			p := c.Evaluate(validated, nil, tt.chosen)
 			if p.Stream != tt.stream || p.Credits[Stream] != tt.want {
 				t.Errorf("stream = %s (%d credits), want %s (%d)", p.Stream, p.Credits[Stream], tt.stream, tt.want)
 			}
@@ -112,7 +112,7 @@ func TestStreamCredits(t *testing.T) {
 		})
 	}
 
-	p := c.Evaluate(validated, "")
+	p := c.Evaluate(validated, nil, "")
 	want := map[string]int{"gaming-graphics": 7, "mobile-web": 8, "kernel-systems": 0, "network-security": 2}
 	for k, v := range want {
 		if p.StreamCredits[k] != v {
@@ -124,13 +124,13 @@ func TestStreamCredits(t *testing.T) {
 func TestStreamCreditsCappedAndTieGoesToFirst(t *testing.T) {
 	c := ADBachelor()
 	// Nothing validated: every stream has 0, so the first stream is used.
-	if p := c.Evaluate(NewProjectSet(), ""); p.Stream != "gaming-graphics" || p.Credits[Stream] != 0 {
+	if p := c.Evaluate(NewProjectSet(), nil, ""); p.Stream != "gaming-graphics" || p.Credits[Stream] != 0 {
 		t.Errorf("empty: stream = %s, credits = %d", p.Stream, p.Credits[Stream])
 	}
 
 	// All of Kernel and Systems: 3+3+2+2+2+3+2 = 17, capped at 14.
 	all := NewProjectSet(1416, 1421, 1415, 1479, 1330, 1381, 2606)
-	p := c.Evaluate(all, "kernel-systems")
+	p := c.Evaluate(all, nil, "kernel-systems")
 	if p.StreamCredits["kernel-systems"] != 17 || p.Credits[Stream] != 14 {
 		t.Errorf("kernel-systems = %d uncapped, %d counted", p.StreamCredits["kernel-systems"], p.Credits[Stream])
 	}
@@ -147,11 +147,32 @@ func TestNewValidatesStreams(t *testing.T) {
 		"stream module in none": {{"a", "A", nil}},
 		"duplicate key":         {{"a", "A", []string{"STR 1"}}, {"a", "B", []string{"STR 1"}}},
 	} {
-		if _, err := New(modules, streams); err == nil {
+		if _, err := New(modules, streams, nil); err == nil {
 			t.Errorf("%s: want error", name)
 		}
 	}
-	if _, err := New(modules, []StreamChoice{{"a", "A", []string{"STR 1"}}}); err != nil {
+	if _, err := New(modules, []StreamChoice{{"a", "A", []string{"STR 1"}}}, nil); err != nil {
 		t.Errorf("valid: %v", err)
+	}
+}
+
+func TestSelfReportedModules(t *testing.T) {
+	c := ADBachelor()
+	marked := ModuleSet{"GEN 101": true, "GEN 201": true, "BAI 498": true, "CCP 101": true}
+	p := c.Evaluate(NewProjectSet(), marked, "")
+	// GEN 101 (1) + GEN 201 (2) count as General; BAI 498 (4) as Standard.
+	// CCP 101 (Libft) is tracked through 42 only, so marking it does nothing.
+	if p.Credits[General] != 3 || p.Credits[Standard] != 4 {
+		t.Errorf("credits = %v, want general 3, standard 4", p.Credits)
+	}
+	// A module completed on 42 and also marked counts once.
+	if p := c.Evaluate(NewProjectSet(2267), ModuleSet{"ARI 111": true}, ""); p.Credits[Standard] != 2 {
+		t.Errorf("ARI 111 standard = %d, want 2", p.Credits[Standard])
+	}
+	if !c.SelfReported("GEN 301") || c.SelfReported("CCP 101") {
+		t.Error("SelfReported: GEN 301 should be, CCP 101 should not")
+	}
+	if _, err := New([]Module{{"STD 1", "std", 2, Standard, ids(2), Solo}}, nil, []string{"NOPE"}); err == nil {
+		t.Error("unknown self-reported module: want error")
 	}
 }

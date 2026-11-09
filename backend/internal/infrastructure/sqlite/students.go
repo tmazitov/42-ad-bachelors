@@ -93,6 +93,25 @@ func (r *StudentRepository) SetStream(ctx context.Context, id student.ID, stream
 	return nil
 }
 
+func (r *StudentRepository) SetModuleMark(ctx context.Context, id student.ID, code string, completed bool) error {
+	var exists bool
+	if err := r.db.QueryRowContext(ctx, `SELECT EXISTS (SELECT 1 FROM students WHERE id = ?)`, id).Scan(&exists); err != nil {
+		return err
+	}
+	if !exists {
+		return fmt.Errorf("student %d: %w", id, student.ErrNotFound)
+	}
+	var err error
+	if completed {
+		_, err = r.db.ExecContext(ctx, `
+			INSERT OR IGNORE INTO student_marked_modules (student_id, module_code) VALUES (?, ?)`, id, code)
+	} else {
+		_, err = r.db.ExecContext(ctx, `
+			DELETE FROM student_marked_modules WHERE student_id = ? AND module_code = ?`, id, code)
+	}
+	return err
+}
+
 func (r *StudentRepository) FindByID(ctx context.Context, id student.ID) (student.Student, error) {
 	return r.findOne(ctx, `WHERE id = ?`, id)
 }
@@ -115,6 +134,12 @@ func (r *StudentRepository) findOne(ctx context.Context, where string, arg any) 
 		return student.Student{}, err
 	}
 	s.Projects = byID[s.ID]
+
+	marks, err := r.loadMarks(ctx, `WHERE student_id = ?`, s.ID)
+	if err != nil {
+		return student.Student{}, err
+	}
+	s.MarkedModules = marks[s.ID]
 	return s, nil
 }
 
@@ -149,10 +174,35 @@ func (r *StudentRepository) ListSynced(ctx context.Context) ([]student.Student, 
 	if err != nil {
 		return nil, err
 	}
+	marks, err := r.loadMarks(ctx, ``)
+	if err != nil {
+		return nil, err
+	}
 	for i := range students {
 		students[i].Projects = byID[students[i].ID]
+		students[i].MarkedModules = marks[students[i].ID]
 	}
 	return students, nil
+}
+
+func (r *StudentRepository) loadMarks(ctx context.Context, where string, args ...any) (map[student.ID][]string, error) {
+	rows, err := r.db.QueryContext(ctx, `
+		SELECT student_id, module_code FROM student_marked_modules `+where+` ORDER BY module_code`, args...)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+
+	byID := map[student.ID][]string{}
+	for rows.Next() {
+		var sid student.ID
+		var code string
+		if err := rows.Scan(&sid, &code); err != nil {
+			return nil, err
+		}
+		byID[sid] = append(byID[sid], code)
+	}
+	return byID, rows.Err()
 }
 
 func (r *StudentRepository) query(ctx context.Context, q string, args ...any) ([]student.Student, error) {

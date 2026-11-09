@@ -14,16 +14,22 @@ type StreamChoice struct {
 	Modules []string // module codes
 }
 
+// ModuleSet is a set of module codes.
+type ModuleSet map[string]bool
+
 // Curriculum is the full list of modules of a degree.
 type Curriculum struct {
 	modules []Module
 	streams []StreamChoice
+	// selfReported modules can be marked completed by the student: their
+	// results are recorded outside 42 (e.g. by the Learning Team on ATRIUM).
+	selfReported ModuleSet
 }
 
-// New validates modules and streams and builds a Curriculum. Every stream
-// module must belong to at least one stream, and streams may only list
-// stream modules.
-func New(modules []Module, streams []StreamChoice) (Curriculum, error) {
+// New validates modules, streams and self-reported module codes and builds a
+// Curriculum. Every stream module must belong to at least one stream, and
+// streams may only list stream modules.
+func New(modules []Module, streams []StreamChoice, selfReported []string) (Curriculum, error) {
 	byCode := make(map[string]Module, len(modules))
 	for _, m := range modules {
 		if _, ok := RequiredCredits[m.Category]; !ok {
@@ -62,7 +68,20 @@ func New(modules []Module, streams []StreamChoice) (Curriculum, error) {
 		}
 	}
 
-	return Curriculum{modules: modules, streams: streams}, nil
+	self := make(ModuleSet, len(selfReported))
+	for _, code := range selfReported {
+		if _, ok := byCode[code]; !ok {
+			return Curriculum{}, fmt.Errorf("self-reported module %s: unknown module", code)
+		}
+		self[code] = true
+	}
+
+	return Curriculum{modules: modules, streams: streams, selfReported: self}, nil
+}
+
+// SelfReported reports whether the student may mark the module completed.
+func (c Curriculum) SelfReported(code string) bool {
+	return c.selfReported[code]
 }
 
 // Modules returns a copy of all modules.
@@ -99,13 +118,14 @@ type Progress struct {
 	StreamChosen bool
 }
 
-// Evaluate computes progress for a student with the given validated projects
+// Evaluate computes progress for a student with the given validated projects,
+// modules they marked completed themselves (only self-reported modules count)
 // and chosen stream (empty if not chosen yet).
-func (c Curriculum) Evaluate(validated ProjectSet, chosenStream string) Progress {
+func (c Curriculum) Evaluate(validated ProjectSet, marked ModuleSet, chosenStream string) Progress {
 	earned := make(map[Category]int, len(Categories))
 	completed := map[string]bool{}
 	for _, m := range c.modules {
-		if !m.CompletedBy(validated) {
+		if !m.CompletedBy(validated) && !(c.selfReported[m.Code] && marked[m.Code]) {
 			continue
 		}
 		completed[m.Code] = true

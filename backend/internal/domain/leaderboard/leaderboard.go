@@ -21,7 +21,7 @@ type Entry struct {
 func Rank(c curriculum.Curriculum, students []student.Student) []Entry {
 	entries := make([]Entry, len(students))
 	for i, s := range students {
-		entries[i] = Entry{Student: s, Progress: c.Evaluate(s.Validated(), s.Stream)}
+		entries[i] = Entry{Student: s, Progress: c.Evaluate(s.Validated(), s.Marked(), s.Stream)}
 	}
 
 	sort.Slice(entries, func(i, j int) bool {

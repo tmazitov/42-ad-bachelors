@@ -5,6 +5,7 @@ import (
 	"database/sql"
 	"errors"
 	"path/filepath"
+	"strings"
 	"testing"
 	"time"
 
@@ -200,5 +201,44 @@ func TestSetStreamSurvivesProfileSave(t *testing.T) {
 	}
 	if err := repo.SetStream(ctx, 99, "mobile-web"); !errors.Is(err, student.ErrNotFound) {
 		t.Errorf("SetStream(99) err = %v, want ErrNotFound", err)
+	}
+}
+
+func TestModuleMarks(t *testing.T) {
+	ctx := context.Background()
+	repo := NewStudentRepository(openTestDB(t))
+	save(t, repo, student.Student{ID: 1, Login: "alice", DisplayName: "Alice", RegisteredAt: registered})
+	if err := repo.ReplaceProjects(ctx, 1, nil, registered); err != nil {
+		t.Fatal(err)
+	}
+
+	for _, code := range []string{"GEN 201", "GEN 101", "GEN 101"} { // marking twice is fine
+		if err := repo.SetModuleMark(ctx, 1, code, true); err != nil {
+			t.Fatal(err)
+		}
+	}
+	if err := repo.SetModuleMark(ctx, 1, "GEN 201", false); err != nil {
+		t.Fatal(err)
+	}
+	if err := repo.SetModuleMark(ctx, 1, "BAI 498", true); err != nil {
+		t.Fatal(err)
+	}
+
+	s, err := repo.FindByID(ctx, 1)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got := strings.Join(s.MarkedModules, ","); got != "BAI 498,GEN 101" {
+		t.Errorf("FindByID marks = %q", got)
+	}
+	synced, err := repo.ListSynced(ctx)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(synced) != 1 || len(synced[0].MarkedModules) != 2 {
+		t.Errorf("ListSynced = %+v", synced)
+	}
+	if err := repo.SetModuleMark(ctx, 99, "GEN 101", true); !errors.Is(err, student.ErrNotFound) {
+		t.Errorf("SetModuleMark(99) err = %v, want ErrNotFound", err)
 	}
 }
