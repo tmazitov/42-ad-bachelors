@@ -63,4 +63,17 @@ const auth = useAuthStore()
   background: currentColor;
   opacity: 0.3;
 }
+
+/* Phones: one line per item, no divider */
+@media (max-width: 640px) {
+  .app-footer {
+    flex-direction: column;
+    gap: 0.25rem;
+    text-align: center;
+  }
+
+  .footer-divider {
+    display: none;
+  }
+}
 </style>
