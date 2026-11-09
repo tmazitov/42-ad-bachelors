@@ -3,6 +3,7 @@ package progress
 import (
 	"context"
 	"errors"
+	"fmt"
 	"testing"
 	"time"
 
@@ -129,5 +130,104 @@ func TestSyncAllStopsWhen42IsBusy(t *testing.T) {
 	// alice synced, bob hit the busy budget, carol was not attempted.
 	if report.Synced != 1 || len(src.tokens) != 2 {
 		t.Errorf("report = %+v, 42 calls = %d", report, len(src.tokens))
+	}
+}
+
+// boardRepo serves ListSynced and counts calls.
+type boardRepo struct {
+	student.Repository
+	students []student.Student
+	lists    int
+}
+
+func (r *boardRepo) ListSynced(context.Context) ([]student.Student, error) {
+	r.lists++
+	return r.students, nil
+}
+
+func boardStudents() []student.Student {
+	var out []student.Student
+	synced := time.Date(2026, 11, 9, 10, 0, 0, 0, time.UTC)
+	// 25 students: s00 has no projects, s01 has Libft (4 credits), s02 Libft + get_next_line (7)...
+	ids := []curriculum.ProjectID{1314, 1327, 1331, 1336, 1335}
+	for i := range 25 {
+		st := student.Student{ID: student.ID(i + 1), Login: fmt.Sprintf("s%02d", i), DisplayName: fmt.Sprintf("Student %d", i),
+			ProjectsSyncedAt: synced.Add(time.Duration(i) * time.Minute)}
+		for _, id := range ids[:min(i%6, len(ids))] {
+			st.Projects = append(st.Projects, student.CompletedProject{ProjectID: id})
+		}
+		out = append(out, st)
+	}
+	return out
+}
+
+func TestLeaderboardIsCachedForTwoMinutes(t *testing.T) {
+	repo := &boardRepo{students: boardStudents()}
+	svc := NewService(&fakeSource{}, fakeTokens{}, repo, curriculum.ADBachelor())
+	now := time.Date(2026, 11, 9, 12, 0, 0, 0, time.UTC)
+	svc.now = func() time.Time { return now }
+
+	for range 3 {
+		if _, err := svc.Leaderboard(context.Background()); err != nil {
+			t.Fatal(err)
+		}
+	}
+	now = now.Add(119 * time.Second)
+	svc.LeaderboardPage(context.Background(), "", 2, 10, 0)
+	if repo.lists != 1 {
+		t.Errorf("ListSynced called %d times within 2 minutes, want 1", repo.lists)
+	}
+	now = now.Add(2 * time.Second)
+	svc.Leaderboard(context.Background())
+	if repo.lists != 2 {
+		t.Errorf("ListSynced called %d times after 2 minutes, want 2", repo.lists)
+	}
+}
+
+func TestLeaderboardPage(t *testing.T) {
+	repo := &boardRepo{students: boardStudents()}
+	svc := NewService(&fakeSource{}, fakeTokens{}, repo, curriculum.ADBachelor())
+	ctx := context.Background()
+
+	p, err := svc.LeaderboardPage(ctx, "", 2, 10, 1) // viewer: s00, no credits, last
+	if err != nil {
+		t.Fatal(err)
+	}
+	if p.Students != 25 || p.Matches != 25 || p.Page != 2 || len(p.Entries) != 10 {
+		t.Errorf("page 2: students %d, matches %d, page %d, entries %d", p.Students, p.Matches, p.Page, len(p.Entries))
+	}
+	if p.Entries[0].Rank > p.Entries[len(p.Entries)-1].Rank {
+		t.Error("entries not in rank order")
+	}
+	if p.Me == nil || p.Me.Entry.Student.Login != "s00" || p.Me.Percentile != 0 {
+		t.Fatalf("me = %+v", p.Me)
+	}
+	if p.Me.Page != 3 { // the five 0-credit students are last: rows 21-25
+		t.Errorf("my page = %d, want 3", p.Me.Page)
+	}
+	if want := time.Date(2026, 11, 9, 10, 24, 0, 0, time.UTC); !p.UpdatedAt.Equal(want) {
+		t.Errorf("updated at %v, want %v", p.UpdatedAt, want)
+	}
+
+	// Past the end: clamped to the last page.
+	if p, _ := svc.LeaderboardPage(ctx, "", 99, 10, 0); p.Page != 3 || len(p.Entries) != 5 || p.Me != nil {
+		t.Errorf("page 99 = page %d with %d entries, me %v", p.Page, len(p.Entries), p.Me)
+	}
+
+	// Search by login or display name; totals stay those of the whole board.
+	p, _ = svc.LeaderboardPage(ctx, "STUDENT 1", 1, 10, 0)
+	if p.Matches != 11 || p.Students != 25 || len(p.Entries) != 10 { // 1, 10-19
+		t.Errorf("search: matches %d, students %d, entries %d", p.Matches, p.Students, len(p.Entries))
+	}
+	if p, _ := svc.LeaderboardPage(ctx, "nobody", 1, 10, 0); p.Matches != 0 || p.Page != 1 || len(p.Entries) != 0 {
+		t.Errorf("no match: %+v", p)
+	}
+
+	// The top student is ahead of everyone with fewer credits.
+	p, _ = svc.LeaderboardPage(ctx, "", 1, 10, 6) // s05: 5 projects, the most
+	// 4 and 5 projects give the same credits here, so 8 students share rank
+	// 1 and 17 of the 24 others are below: 71%.
+	if p.Me == nil || p.Me.Entry.Rank != 1 || p.Me.Page != 1 || p.Me.Percentile != 71 {
+		t.Errorf("s05 rank %d, page %d, percentile %d", p.Me.Entry.Rank, p.Me.Page, p.Me.Percentile)
 	}
 }

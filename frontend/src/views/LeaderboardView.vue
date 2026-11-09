@@ -2,9 +2,9 @@
 import { ref, computed, onMounted, watch } from 'vue'
 import { useRouter } from 'vue-router'
 import { Button, InputText, IconField, InputIcon } from 'primevue'
-import { useAuthStore } from '@/stores/auth'
 import { api } from '@/services/api'
 import StudentAvatar from '@/components/leaderboard/StudentAvatar.vue'
+import { CATEGORY_COLORS } from '@/utils/data'
 
 interface LeaderboardStudent {
   rank: number
@@ -20,49 +20,91 @@ interface LeaderboardStudent {
   synced_at: string
 }
 
+interface LeaderboardMe extends LeaderboardStudent {
+  page: number // page holding me in the unfiltered board
+  percentile: number | null // share of other students ranked below me
+}
+
+// One page of the leaderboard (GET /leaderboard?page=&search=). The backend
+// ranks everyone and caches the ranking for 2 minutes.
 interface LeaderboardData {
   updated_at: string | null
-  students: LeaderboardStudent[]
+  total_students: number // whole board
+  average: number // whole board, in %
+  students: LeaderboardStudent[] // this page
+  total: number // students matching the search
+  page: number
+  page_size: number
+  me: LeaderboardMe | null
 }
 
 type SegmentKey = 'general' | 'standard' | 'stream' | 'elective'
 
 const TOTAL = 132
-const PAGE_SIZE = 10
 
 const SEGMENTS: { key: SegmentKey; label: string; color: string }[] = [
-  { key: 'general', label: 'General', color: '#22c55e' },
-  { key: 'standard', label: 'Standard', color: '#3b82f6' },
-  { key: 'stream', label: 'Stream', color: '#8b5cf6' },
-  { key: 'elective', label: 'Elective', color: '#f97316' },
+  { key: 'general', label: 'General', color: CATEGORY_COLORS.general },
+  { key: 'standard', label: 'Standard', color: CATEGORY_COLORS.standard },
+  { key: 'stream', label: 'Stream', color: CATEGORY_COLORS.stream },
+  { key: 'elective', label: 'Elective', color: CATEGORY_COLORS.elective },
 ]
 
 const router = useRouter()
-const auth = useAuthStore()
 
 const data = ref<LeaderboardData | null>(null)
-const loading = ref(true)
+const loading = ref(true) // first load
+const pageLoading = ref(false) // later pages and searches
 const error = ref<string | null>(null)
-const page = ref(1)
 const search = ref('')
 
-const students = computed(() => data.value?.students ?? [])
-const query = computed(() => search.value.trim().toLowerCase())
-
-const listed = computed(() => {
-  if (!query.value) return students.value
-  return students.value.filter(
-    s => s.login.toLowerCase().includes(query.value) || s.display_name.toLowerCase().includes(query.value),
-  )
+const query = computed(() => search.value.trim())
+const page = computed(() => data.value?.page ?? 1)
+const pageStudents = computed(() => data.value?.students ?? [])
+const totalStudents = computed(() => data.value?.total_students ?? 0)
+const totalPages = computed(() => {
+  const d = data.value
+  return d ? Math.ceil(d.total / d.page_size) : 0
 })
 
-const totalPages = computed(() => Math.ceil(listed.value.length / PAGE_SIZE))
-const pageStudents = computed(() => {
-  const start = (page.value - 1) * PAGE_SIZE
-  return listed.value.slice(start, start + PAGE_SIZE)
-})
+let abortController: AbortController | null = null
+let requestedQuery = '' // search of the latest fetchPage call
 
-watch(query, () => { page.value = 1 })
+// fetchPage loads page p for the search q; a newer call cancels an older one.
+async function fetchPage(p: number, q: string) {
+  requestedQuery = q
+  abortController?.abort()
+  abortController = new AbortController()
+  const { signal } = abortController
+
+  pageLoading.value = true
+  try {
+    const params = new URLSearchParams({ page: String(p) })
+    if (q) params.set('search', q)
+    data.value = await api<LeaderboardData>(`/leaderboard?${params}`, { signal })
+    error.value = null
+  } catch (e) {
+    if (signal.aborted) return
+    error.value = e instanceof Error ? e.message : 'Failed to load leaderboard'
+  } finally {
+    if (!signal.aborted) {
+      pageLoading.value = false
+      loading.value = false
+    }
+  }
+}
+
+function goTo(p: number) {
+  if (p < 1 || p > totalPages.value || p === page.value) return
+  fetchPage(p, query.value)
+}
+
+// Searching goes back to page 1, once the user pauses typing.
+let searchTimer: ReturnType<typeof setTimeout> | null = null
+watch(query, (q) => {
+  if (searchTimer) clearTimeout(searchTimer)
+  if (q === requestedQuery) return // already loading it (e.g. goToMe cleared the search)
+  searchTimer = setTimeout(() => fetchPage(1, q), 250)
+})
 
 // Page buttons: all pages when there are few, otherwise the first, the last
 // and a window around the current page, e.g. 1 … 4 5 6 … 20.
@@ -86,28 +128,20 @@ const updatedAt = computed(() => {
   return iso ? new Date(iso).toLocaleString() : null
 })
 
-const average = computed(() => {
-  const list = students.value
-  if (!list.length) return 0
-  return list.reduce((sum, s) => sum + s.percentage, 0) / list.length
-})
+const average = computed(() => data.value?.average ?? 0)
+const me = computed(() => data.value?.me ?? null)
+const percentile = computed(() => me.value?.percentile ?? null)
 
-const me = computed(() => students.value.find(s => s.login === auth.user?.login) ?? null)
-
-// Share of other students ranked below me.
-const percentile = computed(() => {
-  if (!me.value || students.value.length < 2) return null
-  const below = students.value.filter(s => s.total < me.value!.total).length
-  return Math.round((below / (students.value.length - 1)) * 100)
-})
-
-function goToMe() {
+async function goToMe() {
   if (!me.value) return
+  const { login, page: myPage } = me.value
+  if (searchTimer) clearTimeout(searchTimer)
   search.value = ''
-  const index = listed.value.indexOf(me.value)
-  if (index >= 0) page.value = Math.floor(index / PAGE_SIZE) + 1
+  // Load my page unless it is already shown unfiltered.
+  const filtered = data.value !== null && data.value.total !== data.value.total_students
+  if (myPage !== page.value || filtered) await fetchPage(myPage, '')
   requestAnimationFrame(() => {
-    document.getElementById(`lb-${me.value!.login}`)?.scrollIntoView({ behavior: 'smooth', block: 'center' })
+    document.getElementById(`lb-${login}`)?.scrollIntoView({ behavior: 'smooth', block: 'center' })
   })
 }
 
@@ -115,15 +149,7 @@ function segWidth(student: LeaderboardStudent, key: SegmentKey) {
   return `${(student[key] / TOTAL) * 100}%`
 }
 
-onMounted(async () => {
-  try {
-    data.value = await api<LeaderboardData>('/leaderboard')
-  } catch (e) {
-    error.value = e instanceof Error ? e.message : 'Failed to load leaderboard'
-  } finally {
-    loading.value = false
-  }
-})
+onMounted(() => fetchPage(1, ''))
 </script>
 
 <template>
@@ -146,7 +172,7 @@ onMounted(async () => {
       Could not load leaderboard: {{ error }}
     </div>
 
-    <div v-else-if="!students.length" class="lb-card lb-empty">
+    <div v-else-if="!totalStudents" class="lb-card lb-empty">
       <i class="pi pi-trophy text-3xl" />
       <span class="font-medium">No students yet</span>
       <span class="lb-muted text-sm">Students appear here after they log in.</span>
@@ -157,7 +183,7 @@ onMounted(async () => {
       <div class="lb-stats">
         <div class="lb-card lb-stat">
           <span class="lb-stat__label"><i class="pi pi-users" /> Students</span>
-          <span class="lb-stat__value">{{ students.length }}</span>
+          <span class="lb-stat__value">{{ totalStudents }}</span>
         </div>
         <div class="lb-card lb-stat">
           <span class="lb-stat__label"><i class="pi pi-chart-line" /> Average progress</span>
@@ -189,7 +215,7 @@ onMounted(async () => {
       </div>
 
       <!-- List -->
-      <div v-if="pageStudents.length" class="lb-card lb-list">
+      <div v-if="pageStudents.length" class="lb-card lb-list" :class="{ 'lb-list--loading': pageLoading }">
         <div
           v-for="s in pageStudents"
           :id="`lb-${s.login}`"
@@ -230,7 +256,7 @@ onMounted(async () => {
 
       <!-- Pagination -->
       <div v-if="totalPages > 1" class="lb-pagination">
-        <button class="lb-page-btn" :disabled="page === 1" @click="page--">
+        <button class="lb-page-btn" :disabled="page === 1 || pageLoading" @click="goTo(page - 1)">
           <i class="pi pi-chevron-left" />
         </button>
         <template v-for="(item, i) in pageItems" :key="`${item}-${i}`">
@@ -239,12 +265,13 @@ onMounted(async () => {
             v-else
             class="lb-page-btn"
             :class="{ 'lb-page-btn--active': item === page }"
-            @click="page = item"
+            :disabled="pageLoading"
+            @click="goTo(item)"
           >
             {{ item }}
           </button>
         </template>
-        <button class="lb-page-btn" :disabled="page === totalPages" @click="page++">
+        <button class="lb-page-btn" :disabled="page === totalPages || pageLoading" @click="goTo(page + 1)">
           <i class="pi pi-chevron-right" />
         </button>
       </div>
@@ -444,6 +471,11 @@ onMounted(async () => {
   display: flex;
   justify-content: center;
   gap: 0.375rem;
+}
+
+.lb-list--loading {
+  opacity: 0.55;
+  transition: opacity 0.15s;
 }
 
 .lb-page-btn {

@@ -33,7 +33,9 @@ Features:
   bachelor module each one counts for, or "Not in bachelor"; a click opens the project on intra. **Students**
   searches students in the app (paginated) and, by login, 42 Abu Dhabi students on intra who never signed in;
   any of them opens `/profile/:login`.
-- **Leaderboard** (`/leaderboard`): ranking of everyone who has logged into the app. It is built by the Worker.
+- **Leaderboard** (`/leaderboard`): ranking of everyone who has logged into the app, 10 per page with search and
+  "your rank" (jumps to your page). The backend ranks and pages it (`GET /api/v1/leaderboard?page=&search=`) and
+  caches the ranking for 2 minutes. (§4.3 describes the legacy Worker version.)
 
 ---
 

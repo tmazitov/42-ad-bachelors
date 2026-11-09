@@ -30,7 +30,7 @@ Docker: in production use the root `compose.yaml` (nginx entry point, frontend, 
 | GET | `/api/v1/students/:login` 🔒 | Any 42 student; fetched from 42 and stored if unknown. 404 if 42 has no such login |
 | GET | `/api/v1/students?search=&page=` 🔒 | Registered students matching login or display name, 10 per page. Page 1 also has `intra`: 42 Abu Dhabi students matching the login on 42 who never signed in (up to 10, cached 3 min per query; empty if 42 fails) |
 | GET | `/api/v1/projects?search=` 🔒 | 42cursus projects matching the name (up to 15, exams left out), each with the bachelor `modules` it counts for (empty: not in the bachelor). The catalogue is fetched from 42 at startup and then once a day (about 1 minute: 42 serves it slowly); until the first fetch finishes, searches answer 503 "still loading" |
-| GET | `/api/v1/leaderboard` 🔒 | Synced registered students ranked by credits (ties share a rank) |
+| GET | `/api/v1/leaderboard?page=&search=` 🔒 | One page (10) of synced registered students ranked by credits (ties share a rank), filtered by login/display name. Also `total_students`, `average` (whole board) and `me` (the viewer's entry, the page it is on, `percentile`). The ranking is cached for 2 minutes |
 | GET | `/api/v1/avatar?url=` | Session required. Proxies a `https://cdn.intra.42.fr/users/...` image. The CDN requires auth, so `<img>` can't load it directly. 400 for other URLs. Cached in a 50 MB LRU keyed by the URL without query/fragment; not-found answers cached 10 min |
 
 🔒 = needs the session cookie (401 otherwise).
