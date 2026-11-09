@@ -5,6 +5,8 @@ package projects
 
 import (
 	"context"
+	"errors"
+	"log/slog"
 	"sort"
 	"strings"
 	"sync"
@@ -20,9 +22,17 @@ import (
 // fetched again; projects rarely change.
 const catalogTTL = 24 * time.Hour
 
-// fetchTimeout bounds a catalogue fetch (several pages), which is shared by
-// concurrent searches and so does not use any single caller's context.
-const fetchTimeout = 30 * time.Second
+// fetchTimeout bounds a catalogue fetch, which is shared by concurrent
+// searches and so does not use any single caller's context. 42 serves the
+// catalogue slowly: about 500 projects take 40s or more.
+const fetchTimeout = 3 * time.Minute
+
+// searchWait is how long a search waits for a catalogue fetch in progress
+// before answering ErrLoading (the fetch goes on in the background).
+const searchWait = 10 * time.Second
+
+// ErrLoading means the catalogue is still being fetched from 42.
+var ErrLoading = errors.New("the project list is still loading from 42, try again in a few seconds")
 
 // Project is a 42cursus project.
 type Project struct {
@@ -53,10 +63,12 @@ type Result struct {
 
 // Service runs the project search.
 type Service struct {
-	catalog Catalog
-	tokens  AppTokenSource
-	modules map[curriculum.ProjectID][]curriculum.Module
-	now     func() time.Time
+	catalog    Catalog
+	tokens     AppTokenSource
+	modules    map[curriculum.ProjectID][]curriculum.Module
+	log        *slog.Logger
+	now        func() time.Time
+	searchWait time.Duration
 
 	mu       sync.Mutex
 	projects []Project
@@ -64,14 +76,21 @@ type Service struct {
 	loads    singleflight.Group
 }
 
-func NewService(catalog Catalog, tokens AppTokenSource, c curriculum.Curriculum) *Service {
+func NewService(catalog Catalog, tokens AppTokenSource, c curriculum.Curriculum, log *slog.Logger) *Service {
 	modules := map[curriculum.ProjectID][]curriculum.Module{}
 	for _, m := range c.Modules() {
 		for _, id := range m.ProjectIDs {
 			modules[id] = append(modules[id], m)
 		}
 	}
-	return &Service{catalog: catalog, tokens: tokens, modules: modules, now: time.Now}
+	return &Service{catalog: catalog, tokens: tokens, modules: modules, log: log, now: time.Now,
+		searchWait: searchWait}
+}
+
+// Warm starts fetching the catalogue in the background, e.g. at startup, so
+// the first search does not wait for it.
+func (s *Service) Warm() {
+	s.load()
 }
 
 // Search returns up to limit projects whose name or slug contains query
@@ -132,43 +151,58 @@ func matchRank(q string, p Project) (int, bool) {
 	return 0, false
 }
 
-// catalogue returns the cached projects, fetching them when missing or older
-// than catalogTTL. If a refetch fails, the old list is used.
+// catalogue returns the cached projects. When they are older than
+// catalogTTL, the old list is returned while a new one is fetched in the
+// background. Without any list it waits up to searchWait for the fetch, then
+// returns ErrLoading.
 func (s *Service) catalogue(ctx context.Context) ([]Project, error) {
 	s.mu.Lock()
 	projects, loadedAt := s.projects, s.loadedAt
 	s.mu.Unlock()
-	if projects != nil && s.now().Sub(loadedAt) < catalogTTL {
+	if projects != nil {
+		if s.now().Sub(loadedAt) >= catalogTTL {
+			s.load()
+		}
 		return projects, nil
 	}
 
-	ch := s.loads.DoChan("catalogue", func() (any, error) {
-		ctx, cancel := context.WithTimeout(upstream.Background(context.WithoutCancel(ctx)), fetchTimeout)
+	ch := s.load()
+	wait := time.NewTimer(s.searchWait)
+	defer wait.Stop()
+	select {
+	case <-ctx.Done():
+		return nil, ctx.Err()
+	case <-wait.C:
+		return nil, ErrLoading
+	case res := <-ch:
+		if res.Err != nil {
+			return nil, res.Err
+		}
+		return res.Val.([]Project), nil
+	}
+}
+
+// load fetches the catalogue unless a fetch is already running; concurrent
+// callers share one fetch.
+func (s *Service) load() <-chan singleflight.Result {
+	return s.loads.DoChan("catalogue", func() (any, error) {
+		ctx, cancel := context.WithTimeout(upstream.Background(context.Background()), fetchTimeout)
 		defer cancel()
+		start := s.now()
 		token, err := s.tokens.AppToken(ctx)
 		if err != nil {
+			s.log.Warn("fetching the project catalogue failed", "err", err)
 			return nil, err
 		}
 		fetched, err := s.catalog.CursusProjects(ctx, token)
 		if err != nil {
+			s.log.Warn("fetching the project catalogue failed", "err", err)
 			return nil, err
 		}
 		s.mu.Lock()
 		s.projects, s.loadedAt = fetched, s.now()
 		s.mu.Unlock()
+		s.log.Info("project catalogue fetched", "projects", len(fetched), "duration", s.now().Sub(start).String())
 		return fetched, nil
 	})
-
-	select {
-	case <-ctx.Done():
-		return nil, ctx.Err()
-	case res := <-ch:
-		if res.Err != nil {
-			if projects != nil {
-				return projects, nil // stale, but better than nothing
-			}
-			return nil, res.Err
-		}
-		return res.Val.([]Project), nil
-	}
 }

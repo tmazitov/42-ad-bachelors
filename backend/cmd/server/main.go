@@ -75,6 +75,9 @@ func run() error {
 	progressSvc := progress.NewService(ftClient, ftClient, studentRepo, bachelor)
 	authSvc := auth.NewService(ftClient, studentRepo, sqlite.NewSessionRepository(db), progressSvc, cfg.SessionTTL, log)
 
+	projectsSvc := projects.NewService(ftClient, ftClient, bachelor, log)
+	projectsSvc.Warm() // 42 serves the catalogue slowly; fetch it before the first search
+
 	studentsSvc := students.NewService(ftClient, progressSvc, ftClient, studentRepo, bachelor,
 		cfg.StudentMaxAge, cfg.VisitorMaxAge, log)
 	defer studentsSvc.Wait() // background refreshes, before the database is closed
@@ -85,7 +88,7 @@ func run() error {
 		Auth:       authSvc,
 		Students:   studentsSvc,
 		Progress:   progressSvc,
-		Projects:   projects.NewService(ftClient, ftClient, bachelor),
+		Projects:   projectsSvc,
 		Avatar:     avatar.NewService(ftClient),
 		Log:        log,
 	})

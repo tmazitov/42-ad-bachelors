@@ -348,10 +348,13 @@ func TestCursusProjectsPaginates(t *testing.T) {
 		}
 		page := r.URL.Query().Get("page")
 		pages = append(pages, page)
-		w.Header().Set("X-Total", "101")
+		if got := r.URL.Query().Get("per_page"); got != fmt.Sprint(catalogPerPage) {
+			t.Errorf("per_page = %s", got)
+		}
+		w.Header().Set("X-Total", fmt.Sprint(catalogPerPage+1))
 		if page == "1" {
 			var items []string
-			for i := range 100 {
+			for i := range catalogPerPage {
 				items = append(items, fmt.Sprintf(`{"id":%d,"name":"p%d","slug":"s%d","exam":false,"parent":null}`, i+1, i, i))
 			}
 			fmt.Fprintf(w, "[%s]", strings.Join(items, ","))
@@ -364,10 +367,10 @@ func TestCursusProjectsPaginates(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if len(got) != 101 || len(pages) != 2 {
+	if len(got) != catalogPerPage+1 || len(pages) != 2 {
 		t.Fatalf("got %d projects in %d pages", len(got), len(pages))
 	}
-	if last := got[100]; last.ID != 500 || !last.Exam || !last.Child || got[0].Child {
+	if last := got[catalogPerPage]; last.ID != 500 || !last.Exam || !last.Child || got[0].Child {
 		t.Errorf("last = %+v, first child = %v", last, got[0].Child)
 	}
 }

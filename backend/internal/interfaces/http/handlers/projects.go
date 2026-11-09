@@ -1,6 +1,8 @@
 package handlers
 
 import (
+	"errors"
+
 	"github.com/gofiber/fiber/v3"
 
 	"github.com/tmazitov/42-ad-bachelors/backend/internal/application/projects"
@@ -27,6 +29,10 @@ type projectResultResponse struct {
 func SearchProjects(svc *projects.Service) fiber.Handler {
 	return func(c fiber.Ctx) error {
 		results, err := svc.Search(c.Context(), c.Query("search"), projectSearchLimit)
+		if errors.Is(err, projects.ErrLoading) {
+			c.Set(fiber.HeaderRetryAfter, "10")
+			return fiber.NewError(fiber.StatusServiceUnavailable, err.Error())
+		}
 		if err != nil {
 			return err
 		}

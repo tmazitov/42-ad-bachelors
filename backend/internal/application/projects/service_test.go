@@ -3,6 +3,9 @@ package projects
 import (
 	"context"
 	"errors"
+	"io"
+	"log/slog"
+	"sync"
 	"testing"
 	"time"
 
@@ -10,17 +13,30 @@ import (
 	"github.com/tmazitov/42-ad-bachelors/backend/internal/domain/curriculum"
 )
 
+var quiet = slog.New(slog.NewTextHandler(io.Discard, nil))
+
 type fakeCatalog struct {
+	mu         sync.Mutex
 	projects   []Project
 	err        error
+	delay      time.Duration
 	calls      int
 	background bool
 }
 
 func (f *fakeCatalog) CursusProjects(ctx context.Context, _ string) ([]Project, error) {
+	time.Sleep(f.delay)
+	f.mu.Lock()
+	defer f.mu.Unlock()
 	f.calls++
 	f.background = upstream.IsBackground(ctx)
 	return f.projects, f.err
+}
+
+func (f *fakeCatalog) callCount() int {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	return f.calls
 }
 
 func (f *fakeCatalog) AppToken(context.Context) (string, error) { return "app", nil }
@@ -45,7 +61,7 @@ func names(rs []Result) []string {
 
 func TestSearchRanksAndFilters(t *testing.T) {
 	f := &fakeCatalog{projects: catalogue}
-	svc := NewService(f, f, curriculum.ADBachelor())
+	svc := NewService(f, f, curriculum.ADBachelor(), quiet)
 
 	got, err := svc.Search(context.Background(), " LIBFT ", 10)
 	if err != nil {
@@ -78,7 +94,7 @@ func TestSearchRanksAndFilters(t *testing.T) {
 
 func TestCatalogueIsFetchedOnceAndRefreshedDaily(t *testing.T) {
 	f := &fakeCatalog{projects: catalogue}
-	svc := NewService(f, f, curriculum.ADBachelor())
+	svc := NewService(f, f, curriculum.ADBachelor(), quiet)
 	now := time.Date(2026, 11, 9, 12, 0, 0, 0, time.UTC)
 	svc.now = func() time.Time { return now }
 
@@ -91,18 +107,52 @@ func TestCatalogueIsFetchedOnceAndRefreshedDaily(t *testing.T) {
 		t.Errorf("catalogue fetched %d times (background %v), want once as background work", f.calls, f.background)
 	}
 
-	// After a day it is refetched; if that fails, the old list is still used.
+	// After a day the old list is still served while it is refetched in
+	// the background; a failed refetch keeps it.
 	now = now.Add(25 * time.Hour)
+	f.mu.Lock()
 	f.err = errors.New("42 is down")
+	f.mu.Unlock()
 	got, err := svc.Search(context.Background(), "libft", 10)
-	if err != nil || len(got) == 0 || f.calls != 2 {
-		t.Errorf("stale fallback: %v, %v, calls = %d", names(got), err, f.calls)
+	if err != nil || len(got) == 0 {
+		t.Errorf("stale list: %v, %v", names(got), err)
+	}
+	deadline := time.Now().Add(time.Second)
+	for f.callCount() != 2 && time.Now().Before(deadline) {
+		time.Sleep(5 * time.Millisecond)
+	}
+	if f.callCount() != 2 {
+		t.Errorf("calls = %d, want a background refetch", f.callCount())
+	}
+	if got, _ := svc.Search(context.Background(), "libft", 10); len(got) == 0 {
+		t.Error("the old list was dropped after a failed refetch")
+	}
+}
+
+func TestSlowCatalogueAnswersLoadingThenServes(t *testing.T) {
+	f := &fakeCatalog{projects: catalogue, delay: 200 * time.Millisecond}
+	svc := NewService(f, f, curriculum.ADBachelor(), quiet)
+	svc.searchWait = 20 * time.Millisecond
+
+	svc.Warm()
+	start := time.Now()
+	if _, err := svc.Search(context.Background(), "libft", 10); !errors.Is(err, ErrLoading) {
+		t.Fatalf("err = %v, want ErrLoading while the catalogue loads", err)
+	}
+	if d := time.Since(start); d > 150*time.Millisecond {
+		t.Errorf("waited %v, want about searchWait", d)
+	}
+
+	time.Sleep(300 * time.Millisecond)
+	got, err := svc.Search(context.Background(), "libft", 10)
+	if err != nil || len(got) == 0 || f.callCount() != 1 {
+		t.Errorf("after loading: %v, %v, calls = %d (want one shared fetch)", names(got), err, f.callCount())
 	}
 }
 
 func TestSearchFailsWithoutCatalogue(t *testing.T) {
 	f := &fakeCatalog{err: upstream.ErrBusy}
-	svc := NewService(f, f, curriculum.ADBachelor())
+	svc := NewService(f, f, curriculum.ADBachelor(), quiet)
 	if _, err := svc.Search(context.Background(), "libft", 10); !errors.Is(err, upstream.ErrBusy) {
 		t.Errorf("err = %v, want ErrBusy", err)
 	}

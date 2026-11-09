@@ -235,9 +235,12 @@ func (u userResponse) student() (student.Student, error) {
 	return s, nil
 }
 
+// The cursus projects endpoint is slow and heavy (a page of 100 is about
+// 3.5 MB and 8s), so the catalogue is fetched in pages of 50 that stay well
+// within the HTTP client timeout.
 const (
-	catalogPerPage  = 100
-	maxCatalogPages = 20
+	catalogPerPage  = 50
+	maxCatalogPages = 40
 )
 
 type cursusProjectResponse struct {
