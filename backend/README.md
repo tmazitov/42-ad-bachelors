@@ -80,7 +80,8 @@ the backend signs the user in); register `PUBLIC_URL/auth/callback` on the 42 ap
 - other students (only viewed) are refreshed before responding when their data is older than `VISITOR_MAX_AGE`
   (default 5m); if 42 fails, the stored data is returned. They are stored but not registered.
 
-Concurrent requests share one refresh (singleflight).
+Concurrent requests share one refresh (singleflight). Logins 42 does not know are remembered for 1 hour
+(`application/cache`), so repeated lookups of them cost no API calls.
 
 ### 42 API budget
 All 42 calls share one rate limiter (`FT_RATE_PER_SECOND`, `FT_RATE_PER_HOUR`).

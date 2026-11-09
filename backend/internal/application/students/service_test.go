@@ -351,3 +351,28 @@ func TestVisitorMaxAge(t *testing.T) {
 		}
 	}
 }
+
+func TestUnknownLoginsAreRemembered(t *testing.T) {
+	f := &fake42{users: map[string]student.Student{}}
+	svc := newService(newRepo(), f)
+
+	for range 3 {
+		if _, err := svc.ByLogin(context.Background(), "ghost"); !errors.Is(err, student.ErrNotFound) {
+			t.Fatalf("err = %v, want ErrNotFound", err)
+		}
+	}
+	if n := f.lookups.Load(); n != 1 {
+		t.Errorf("42 lookups = %d, want 1 (later ones answered from the cache)", n)
+	}
+
+	// Other errors are not remembered.
+	f.fail = errors.New("42 is down")
+	for range 2 {
+		if _, err := svc.ByLogin(context.Background(), "carol"); err == nil {
+			t.Fatal("want error")
+		}
+	}
+	if n := f.lookups.Load(); n != 3 {
+		t.Errorf("42 lookups = %d, want 3 (failures are retried)", n)
+	}
+}

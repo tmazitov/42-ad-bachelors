@@ -18,6 +18,7 @@ import (
 
 	"golang.org/x/sync/singleflight"
 
+	"github.com/tmazitov/42-ad-bachelors/backend/internal/application/cache"
 	"github.com/tmazitov/42-ad-bachelors/backend/internal/application/upstream"
 	"github.com/tmazitov/42-ad-bachelors/backend/internal/domain/curriculum"
 	"github.com/tmazitov/42-ad-bachelors/backend/internal/domain/student"
@@ -31,6 +32,13 @@ var (
 	// ErrNotSelfReported means the module cannot be marked completed by the
 	// student (unknown, or tracked through 42 only).
 	ErrNotSelfReported = errors.New("module cannot be marked by the student")
+)
+
+// notFoundTTL is how long a login that 42 does not know is remembered, so
+// repeated lookups of it don't cost API calls.
+const (
+	notFoundTTL        = time.Hour
+	notFoundMaxEntries = 5000
 )
 
 // refreshTimeout bounds a 42 refresh, which is shared by concurrent callers
@@ -76,6 +84,8 @@ type Service struct {
 
 	refreshes  singleflight.Group
 	background sync.WaitGroup
+	// notFound holds logins 42 answered 404 for.
+	notFound *cache.TTL[string, struct{}]
 }
 
 func NewService(profiles ProfileSource, projects ProjectSyncer, tokens AppTokenSource,
@@ -91,6 +101,7 @@ func NewService(profiles ProfileSource, projects ProjectSyncer, tokens AppTokenS
 		visitorMaxAge: visitorMaxAge,
 		log:           log,
 		now:           time.Now,
+		notFound:      cache.NewTTL[string, struct{}](notFoundTTL, notFoundMaxEntries),
 	}
 }
 
@@ -111,7 +122,13 @@ func (s *Service) ByLogin(ctx context.Context, login string) (View, error) {
 	if err != nil && !errors.Is(err, student.ErrNotFound) {
 		return View{}, err
 	}
-	return s.fresh(ctx, login, st, err == nil)
+	stored := err == nil
+	if !stored {
+		if _, unknown := s.notFound.Get(login); unknown {
+			return View{}, student.ErrNotFound
+		}
+	}
+	return s.fresh(ctx, login, st, stored)
 }
 
 // ByID returns a stored student's profile and progress, e.g. the signed-in one.
@@ -205,6 +222,9 @@ func (s *Service) refresh(ctx context.Context, login string) (student.Student, e
 			return nil, err
 		}
 		profile, err := s.profiles.UserByLogin(ctx, token, login)
+		if errors.Is(err, student.ErrNotFound) {
+			s.notFound.Set(login, struct{}{})
+		}
 		if err != nil {
 			return nil, err
 		}
