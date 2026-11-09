@@ -135,9 +135,13 @@ type searchResponse struct {
 	Total    int              `json:"total"`
 	Page     int              `json:"page"`
 	PageSize int              `json:"page_size"`
+	// Intra are campus students found on 42 who never signed in to the app
+	// (first page only).
+	Intra []studentSummary `json:"intra"`
 }
 
-// SearchStudents finds registered students: GET /students?search=&page=.
+// SearchStudents finds registered students, and on the first page campus
+// students on 42: GET /students?search=&page=.
 func SearchStudents(svc *students.Service) fiber.Handler {
 	return func(c fiber.Ctx) error {
 		page := max(fiber.Query[int](c, "page"), 1)
@@ -146,9 +150,12 @@ func SearchStudents(svc *students.Service) fiber.Handler {
 			return err
 		}
 		resp := searchResponse{Students: make([]studentSummary, len(res.Students)), Total: res.Total,
-			Page: page, PageSize: searchPageSize}
+			Page: page, PageSize: searchPageSize, Intra: make([]studentSummary, len(res.Intra))}
 		for i, s := range res.Students {
 			resp.Students[i] = toSummary(s)
+		}
+		for i, s := range res.Intra {
+			resp.Intra[i] = toSummary(s)
 		}
 		return c.JSON(resp)
 	}

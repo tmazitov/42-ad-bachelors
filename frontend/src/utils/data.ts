@@ -145,3 +145,13 @@ export const STREAMS: StreamDef[] = [
     projects: streamProjects(['NET 111', 'NET 121', 'SEC 221', 'SEC 222', 'SEC 211']),
   },
 ]
+
+// Colour of each module category, shared by the progress chart and search.
+export const CATEGORY_COLORS = {
+  general: '#22c55e',
+  standard: '#3b82f6',
+  stream: '#8b5cf6',
+  elective: '#f97316',
+} as const
+
+export type CategoryKey = keyof typeof CATEGORY_COLORS

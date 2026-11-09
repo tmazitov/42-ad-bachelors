@@ -29,7 +29,10 @@ Each category's credits are capped at its maximum (`Math.min`).
 Features:
 - **Home** (`/`): the logged-in user's progress doughnut. Clicking a category opens a table of its modules.
 - **Student profile** (`/profile/:login`): any student's progress plus their in-progress projects.
-- **Search modal** (header): search students by login (paginated) and 42 projects by name.
+- **Search modal** (header): two tabs. **Projects** (default) searches 42cursus projects by name and shows the
+  bachelor module each one counts for, or "Not in bachelor"; a click opens the project on intra. **Students**
+  searches students in the app (paginated) and, by login, 42 Abu Dhabi students on intra who never signed in;
+  any of them opens `/profile/:login`.
 - **Leaderboard** (`/leaderboard`): ranking of everyone who has logged into the app. It is built by the Worker.
 
 ---
@@ -52,8 +55,8 @@ frontend/                    Vue SPA, run all npm commands here
     composables/
       useProjects.ts           GET /v2/users/:id/projects_users?filter[status]=finished (1 page, 100 max)
       useProgress.ts           Credit calculation + CREDITS_REQUIRED + isCompleted()
-      useStudentSearch.ts      GET /v2/users?search[login]=… (debounced, abortable, X-Total pagination)
-      useProjectSearch.ts      GET /v2/cursus/21/projects?search[name]=…
+      useStudentSearch.ts      GET /api/v1/students?search= (app students, paginated, + intra on page 1)
+      useProjectSearch.ts      GET /api/v1/projects?search=
     models/Project.ts          Project(code, name, credit, id: number | number[] | null)
     models/ProjectGroup.ts     ProjectGroup(name, projects[])
     utils/data.ts              ★ The curriculum: module code → credits → 42 project ID(s)
@@ -91,7 +94,8 @@ Chart.js 4 / vue-chartjs. Node `^20.19 || >=22.12` (see `frontend/.nvmrc`). Lint
 - EMP 101 is the `ft_resume` project (ID 2623; it was renamed from `42_collaborative_resume` on intra).
 - Each module has a `team` value (`solo` / `group` / `mixed`) taken from the 42 API project sessions (Abu Dhabi campus 43 first,
   then cursus 21). `mixed` means the alternatives or sessions differ. It is shown in the projects table.
-- 42 cursus ID **21** = 42cursus (used by project search).
+- 42 cursus ID **21** = 42cursus (the backend's project catalogue for search).
+- 42 campus ID **43** = Abu Dhabi (student search on intra).
 
 ⚠️ **The curriculum is duplicated** in `worker/index.js` (`STANDARD` / `STREAM` / `ELECTIVE` arrays).
 Any change must be made in both places. In the new backend this should exist **once**: the backend owns it,
@@ -191,7 +195,13 @@ Response shape consumed by `LeaderboardView.vue`:
    Concurrent requests for one student share one refresh.
    42 calls wait at most 5s for the rate limiter. Otherwise they fail and the API answers 503 ("42 is busy").
    Background work leaves the last 10% of the hourly budget to sign-ins.
-5. Search (`/api/v1/students?search=`) only covers registered students, from the DB.
+5. Search:
+   - `/api/v1/students?search=` covers registered students from the DB. On page 1 it adds `intra`: 42 Abu Dhabi
+     users matching the login on 42 (`/v2/campus/43/users`, cached 3 min per query), minus registered ones.
+     Opening one goes through `/students/:login` (stored, not registered, refreshed after `VISITOR_MAX_AGE`).
+   - `/api/v1/projects?search=` searches the 42cursus catalogue (fetched once a day, kept in memory) and maps
+     each project to its bachelor modules.
+   - Logins 42 does not know are remembered for 1 hour.
 6. Only validated projects are stored, so in-progress projects and location are not shown.
 7. `POST /api/v1/auth/logout` deletes the session. Expired sessions are purged by the hourly job.
 

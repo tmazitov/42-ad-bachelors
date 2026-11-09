@@ -10,6 +10,7 @@ import {
   standardModules,
   streamModules,
   electiveModules,
+  CATEGORY_COLORS,
 } from '@/utils/data'
 import ProjectsModal from '@/components/profile/ProjectsModal.vue'
 import StreamModal from '@/components/profile/StreamModal.vue'
@@ -46,7 +47,7 @@ const CATEGORIES: CategoryDef[] = [
   {
     key: 'general',
     label: 'General Education',
-    color: '#22c55e',
+    color: CATEGORY_COLORS.general,
     max: CREDITS_REQUIRED.general,
     unit: 'credits',
     description: "University courses on general skills (GEN 101, 201, 301). They are not 42 projects, so they can't be tracked here.",
@@ -55,7 +56,7 @@ const CATEGORIES: CategoryDef[] = [
   {
     key: 'standard',
     label: 'Standard Modules',
-    color: '#3b82f6',
+    color: CATEGORY_COLORS.standard,
     max: CREDITS_REQUIRED.standard,
     unit: 'credits',
     description: 'Required for every student: the 42 common core (Libft to ft_transcendence), plus AI and data science projects (Python for Data Science to Leaffliction), maths projects (computorv1, matrix), ft_resume, the internship and the capstone.',
@@ -64,7 +65,7 @@ const CATEGORIES: CategoryDef[] = [
   {
     key: 'stream',
     label: 'Stream Modules',
-    color: '#8b5cf6',
+    color: CATEGORY_COLORS.stream,
     max: CREDITS_REQUIRED.stream,
     unit: 'credits',
     description: "Your specialisation. Pick one stream; only its modules count, and credits from different streams don't add up.",
@@ -73,7 +74,7 @@ const CATEGORIES: CategoryDef[] = [
   {
     key: 'elective',
     label: 'Elective Modules',
-    color: '#f97316',
+    color: CATEGORY_COLORS.elective,
     max: CREDITS_REQUIRED.elective,
     unit: 'credits',
     description: 'Free-choice projects outside the core and your stream. Any of them counts, up to 12 credits.',

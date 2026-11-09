@@ -7,11 +7,14 @@ interface SearchResponse {
   total: number
   page: number
   page_size: number
+  intra: StudentSummary[] // campus students on 42 who never signed in (page 1 only)
 }
 
-// Searches students registered in the app by login or display name.
+// Searches students registered in the app by login or display name, and on
+// the first page 42 Abu Dhabi students on intra by login.
 export function useStudentSearch(query: Ref<string>) {
   const results = ref<StudentSummary[]>([])
+  const intra = ref<StudentSummary[]>([])
   const loading = ref(false)
   const page = ref(1)
   const totalPages = ref(0)
@@ -26,16 +29,18 @@ export function useStudentSearch(query: Ref<string>) {
     const trimmed = val.trim()
     if (!trimmed) {
       results.value = []
+      intra.value = []
       page.value = 1
       totalPages.value = 0
       loading.value = false
       return
     }
 
-    // Searching the local database is cheap, so a short debounce is enough.
+    // The first page also searches 42 (cached on the backend), so wait for
+    // the user to pause typing.
     debounceTimer = setTimeout(() => {
       if (trimmed === query.value.trim()) search(trimmed, 1)
-    }, 250)
+    }, 400)
   })
 
   async function search(q: string, p: number) {
@@ -48,11 +53,14 @@ export function useStudentSearch(query: Ref<string>) {
       const params = new URLSearchParams({ search: q, page: String(p) })
       const data = await api<SearchResponse>(`/students?${params}`, { signal })
       results.value = data.students
+      // Keep the intra list while paging through the app's students.
+      if (data.page === 1) intra.value = data.intra ?? []
       page.value = data.page
       totalPages.value = Math.ceil(data.total / data.page_size)
     } catch {
       if (signal.aborted) return
       results.value = []
+      intra.value = []
       totalPages.value = 0
     } finally {
       if (!signal.aborted) loading.value = false
@@ -70,10 +78,11 @@ export function useStudentSearch(query: Ref<string>) {
     abortController?.abort()
     abortController = null
     results.value = []
+    intra.value = []
     page.value = 1
     totalPages.value = 0
     loading.value = false
   }
 
-  return { results, loading, page, totalPages, goToPage, reset }
+  return { results, intra, loading, page, totalPages, goToPage, reset }
 }

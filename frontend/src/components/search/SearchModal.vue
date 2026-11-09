@@ -2,19 +2,53 @@
 import { watch, nextTick, ref, computed } from 'vue'
 import { useRouter } from 'vue-router'
 import { useStudentSearch } from '@/composables/useStudentSearch'
+import { useProjectSearch } from '@/composables/useProjectSearch'
 import { proxiedImage } from '@/utils/avatar'
+import { CATEGORY_COLORS } from '@/utils/data'
+import type { ProjectModuleRef } from '@/models/Search'
+
+type Tab = 'projects' | 'students'
 
 const props = defineProps<{ visible: boolean }>()
 const emit = defineEmits<{ 'update:visible': [value: boolean] }>()
 
 const router = useRouter()
+
+const activeTab = ref<Tab>('projects')
 const query = ref('')
 
-const { results, loading, page, totalPages, goToPage, reset } = useStudentSearch(query)
+// Only the active tab searches.
+const projectQuery = computed(() => (activeTab.value === 'projects' ? query.value : ''))
+const studentQuery = computed(() => (activeTab.value === 'students' ? query.value : ''))
+
+const {
+  results: projectResults,
+  loading: projectsLoading,
+  error: projectsError,
+  reset: resetProjects,
+} = useProjectSearch(projectQuery)
+const {
+  results: studentResults,
+  intra: intraResults,
+  loading: studentsLoading,
+  page,
+  totalPages,
+  goToPage,
+  reset: resetStudents,
+} = useStudentSearch(studentQuery)
 
 const inputRef = ref<HTMLInputElement | null>(null)
 
-const isEmpty = computed(() => query.value.trim() && !loading.value && results.value.length === 0)
+const loading = computed(() => (activeTab.value === 'projects' ? projectsLoading.value : studentsLoading.value))
+const isEmpty = computed(() => {
+  if (!query.value.trim() || loading.value) return false
+  return activeTab.value === 'projects'
+    ? projectResults.value.length === 0 && !projectsError.value
+    : studentResults.value.length === 0 && intraResults.value.length === 0
+})
+const placeholder = computed(() =>
+  activeTab.value === 'projects' ? 'Search 42 projects by name…' : 'Search students by login or name…',
+)
 
 function close() {
   emit('update:visible', false)
@@ -23,15 +57,31 @@ function close() {
 watch(() => props.visible, (val) => {
   if (!val) {
     query.value = ''
-    reset()
+    activeTab.value = 'projects'
+    resetProjects()
+    resetStudents()
   } else {
     nextTick(() => inputRef.value?.focus())
   }
 })
 
+function switchTab(tab: Tab) {
+  activeTab.value = tab
+  inputRef.value?.focus()
+}
+
 function selectUser(login: string) {
   close()
   router.push(`/profile/${login}`)
+}
+
+function selectProject(slug: string) {
+  window.open(`https://projects.intra.42.fr/projects/${slug}`, '_blank', 'noopener,noreferrer')
+}
+
+function badgeStyle(m: ProjectModuleRef) {
+  const color = CATEGORY_COLORS[m.category] ?? '#6b7280'
+  return { background: `${color}26`, color } // 26 = 15% alpha
 }
 </script>
 
@@ -47,12 +97,35 @@ function selectUser(login: string) {
         <div class="search-box" role="dialog" aria-modal="true" aria-label="Search">
           <div class="drag-handle" />
 
+          <div class="tab-bar" role="tablist">
+            <button
+              class="tab-btn"
+              :class="{ 'tab-btn--active': activeTab === 'projects' }"
+              role="tab"
+              :aria-selected="activeTab === 'projects'"
+              @click="switchTab('projects')"
+            >
+              <i class="pi pi-box" />
+              Projects
+            </button>
+            <button
+              class="tab-btn"
+              :class="{ 'tab-btn--active': activeTab === 'students' }"
+              role="tab"
+              :aria-selected="activeTab === 'students'"
+              @click="switchTab('students')"
+            >
+              <i class="pi pi-users" />
+              Students
+            </button>
+          </div>
+
           <div class="search-field-wrap">
             <i class="pi pi-search search-icon" />
             <input
               ref="inputRef"
               v-model="query"
-              placeholder="Search students by login or name…"
+              :placeholder="placeholder"
               class="search-input"
               autocomplete="off"
               spellcheck="false"
@@ -65,38 +138,97 @@ function selectUser(login: string) {
           </div>
 
           <div class="results-wrap">
-            <button
-              v-for="user in results"
-              :key="user.login"
-              class="result-item"
-              @click="selectUser(user.login)"
-            >
-              <div class="result-avatar">
-                <span class="result-avatar__initial">{{ user.login[0]?.toUpperCase() }}</span>
-                <img
-                  v-if="user.image"
-                  :src="proxiedImage(user.image)!"
-                  class="result-avatar__img"
-                  alt=""
-                  @load="(e) => (e.target as HTMLElement).classList.add('is-loaded')"
-                />
-              </div>
-              <div class="result-info">
-                <span class="result-primary">{{ user.login }}</span>
-                <span class="result-secondary">{{ user.display_name }}</span>
-              </div>
-            </button>
+            <template v-if="activeTab === 'projects'">
+              <button
+                v-for="project in projectResults"
+                :key="project.id"
+                class="result-item"
+                :title="project.modules.map((m) => `${m.code}: ${m.name}`).join('\n') || 'Not part of the bachelor'"
+                @click="selectProject(project.slug)"
+              >
+                <div class="result-icon">
+                  <i class="pi pi-box" />
+                </div>
+                <div class="result-info">
+                  <span class="result-primary">{{ project.name }}</span>
+                  <span class="result-secondary">{{ project.slug }}</span>
+                </div>
+                <div class="project-badges">
+                  <span
+                    v-for="m in project.modules"
+                    :key="m.code"
+                    class="project-badge"
+                    :style="badgeStyle(m)"
+                  >{{ m.code }}</span>
+                  <span v-if="!project.modules.length" class="project-badge project-badge--out">Not in bachelor</span>
+                </div>
+                <i class="pi pi-external-link result-external" />
+              </button>
+              <p v-if="projectsError" class="empty-hint">Could not search projects: {{ projectsError }}</p>
+            </template>
+
+            <template v-else>
+              <p v-if="studentResults.length && intraResults.length" class="results-label">In the app</p>
+              <button
+                v-for="user in studentResults"
+                :key="user.login"
+                class="result-item"
+                @click="selectUser(user.login)"
+              >
+                <div class="result-avatar">
+                  <span class="result-avatar__initial">{{ user.login[0]?.toUpperCase() }}</span>
+                  <img
+                    v-if="user.image"
+                    :src="proxiedImage(user.image)!"
+                    class="result-avatar__img"
+                    alt=""
+                    @load="(e) => (e.target as HTMLElement).classList.add('is-loaded')"
+                  />
+                </div>
+                <div class="result-info">
+                  <span class="result-primary">{{ user.login }}</span>
+                  <span class="result-secondary">{{ user.display_name }}</span>
+                </div>
+              </button>
+
+              <template v-if="intraResults.length">
+                <p class="results-label">On intra, not using the app yet</p>
+                <button
+                  v-for="user in intraResults"
+                  :key="`intra-${user.login}`"
+                  class="result-item"
+                  @click="selectUser(user.login)"
+                >
+                  <div class="result-avatar">
+                    <span class="result-avatar__initial">{{ user.login[0]?.toUpperCase() }}</span>
+                    <img
+                      v-if="user.image"
+                      :src="proxiedImage(user.image)!"
+                      class="result-avatar__img"
+                      alt=""
+                      @load="(e) => (e.target as HTMLElement).classList.add('is-loaded')"
+                    />
+                  </div>
+                  <div class="result-info">
+                    <span class="result-primary">{{ user.login }}</span>
+                    <span class="result-secondary">{{ user.display_name }}</span>
+                  </div>
+                </button>
+              </template>
+            </template>
 
             <div v-if="isEmpty" class="empty-state">
               <span class="empty-emoji">🔍</span>
-              <p class="empty-hint">No students found</p>
+              <p class="empty-hint">No {{ activeTab }} found</p>
             </div>
             <p v-else-if="!query.trim()" class="empty-hint">
-              Students appear here after they sign in to the app
+              {{ activeTab === 'projects'
+                ? 'Find any 42 project and see which bachelor module it counts for'
+                : 'Find students by login, including 42 Abu Dhabi students not using the app yet' }}
             </p>
           </div>
 
-          <div v-if="totalPages > 1" class="pagination">
+          <div v-if="activeTab === 'students' && totalPages > 1" class="pagination">
             <button
               class="page-btn"
               :disabled="page === 1 || loading"
@@ -213,6 +345,42 @@ function selectUser(login: string) {
   background: var(--p-content-hover-background, rgba(0, 0, 0, 0.07));
 }
 
+/* ── Tab bar ─────────────────────────── */
+.tab-bar {
+  display: flex;
+  gap: 0.25rem;
+  background: var(--color-background-mute);
+  border-radius: 0.75rem;
+  padding: 0.25rem;
+}
+
+.tab-btn {
+  flex: 1;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 0.375rem;
+  padding: 0.4rem 0.75rem;
+  border: none;
+  border-radius: 0.5rem;
+  background: transparent;
+  color: var(--p-text-muted-color, #9ca3af);
+  font-size: 0.8125rem;
+  font-weight: 500;
+  cursor: pointer;
+  transition: background 0.15s, color 0.15s;
+}
+
+.tab-btn:hover:not(.tab-btn--active) {
+  color: inherit;
+}
+
+.tab-btn--active {
+  background: var(--p-primary-color, #3b82f6);
+  color: #fff;
+  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.2);
+}
+
 /* ── Results ─────────────────────────── */
 .results-wrap {
   display: flex;
@@ -279,11 +447,78 @@ function selectUser(login: string) {
   opacity: 1;
 }
 
+/* ── Project icon ────────────────────── */
+.result-icon {
+  width: 2rem;
+  height: 2rem;
+  border-radius: 0.5rem;
+  background: var(--color-background-mute);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  flex-shrink: 0;
+  font-size: 0.875rem;
+  color: var(--p-primary-color, #3b82f6);
+  border: 1px solid var(--card-border);
+}
+
+.result-external {
+  font-size: 0.7rem;
+  color: var(--p-text-muted-color, #9ca3af);
+  opacity: 0;
+  transition: opacity 0.15s;
+  flex-shrink: 0;
+}
+
+.result-item:hover .result-external {
+  opacity: 1;
+}
+
+.project-badges {
+  margin-left: auto;
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: flex-end;
+  gap: 0.25rem;
+  flex-shrink: 0;
+  max-width: 45%;
+}
+
+.project-badge {
+  flex-shrink: 0;
+  white-space: nowrap;
+  font-size: 0.7rem;
+  font-weight: 600;
+  padding: 0.15rem 0.5rem;
+  border-radius: 999px;
+  letter-spacing: 0.02em;
+}
+
+.project-badge--out {
+  background: rgba(0, 0, 0, 0.06);
+  color: var(--p-text-muted-color, #9ca3af);
+}
+
+.dark .project-badge--out {
+  background: rgba(255, 255, 255, 0.07);
+}
+
+/* ── Group label (students) ──────────── */
+.results-label {
+  margin: 0.375rem 0.625rem 0.125rem;
+  font-size: 0.6875rem;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  color: var(--p-text-muted-color, #9ca3af);
+}
+
 /* ── Result text ─────────────────────── */
 .result-info {
   display: flex;
   flex-direction: column;
   min-width: 0;
+  flex: 1;
 }
 
 .result-primary {

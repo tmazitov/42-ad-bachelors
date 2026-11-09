@@ -5,6 +5,7 @@ import (
 	"errors"
 	"io"
 	"log/slog"
+	"strings"
 	"sync"
 	"sync/atomic"
 	"testing"
@@ -116,6 +117,7 @@ type fake42 struct {
 	lookups atomic.Int32
 	// foreground counts lookups not marked upstream.Background.
 	foreground atomic.Int32
+	searches   atomic.Int32
 }
 
 func (f *fake42) AppToken(context.Context) (string, error) { return "app", nil }
@@ -134,6 +136,23 @@ func (f *fake42) UserByLogin(ctx context.Context, _, login string) (student.Stud
 		return student.Student{}, student.ErrNotFound
 	}
 	return u, nil
+}
+
+func (f *fake42) SearchCampusUsers(ctx context.Context, _, query string, limit int) ([]student.Student, error) {
+	f.searches.Add(1)
+	if !upstream.IsBackground(ctx) {
+		f.foreground.Add(1)
+	}
+	if f.fail != nil {
+		return nil, f.fail
+	}
+	var out []student.Student
+	for _, login := range []string{"alice", "bob", "bobby", "3b3-x1", "carol"} {
+		if u, ok := f.users[login]; ok && strings.Contains(login, query) && len(out) < limit {
+			out = append(out, u)
+		}
+	}
+	return out, nil
 }
 
 func (f *fake42) SyncStudent(ctx context.Context, _ string, id student.ID) error {
@@ -374,5 +393,72 @@ func TestUnknownLoginsAreRemembered(t *testing.T) {
 	}
 	if n := f.lookups.Load(); n != 3 {
 		t.Errorf("42 lookups = %d, want 3 (failures are retried)", n)
+	}
+}
+
+// searchRepo adds Search over registered students to memRepo.
+type searchRepo struct{ *memRepo }
+
+func (r searchRepo) Search(_ context.Context, query string, limit, offset int) ([]student.Student, int, error) {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	var all []student.Student
+	for _, s := range r.byID {
+		if s.Registered() && strings.Contains(s.Login, strings.ToLower(query)) {
+			all = append(all, s)
+		}
+	}
+	return all[min(offset, len(all)):min(offset+limit, len(all))], len(all), nil
+}
+
+func TestSearchAddsIntraStudents(t *testing.T) {
+	registeredBob := student.Student{ID: 2, Login: "bob", DisplayName: "Bob", RegisteredAt: now, ProjectsSyncedAt: now}
+	viewedBobby := student.Student{ID: 3, Login: "bobby", DisplayName: "Bobby"} // stored, not registered
+	f := &fake42{users: map[string]student.Student{
+		"bob": registeredBob, "bobby": viewedBobby,
+		"3b3-x1": {ID: 9, Login: "3b3-x1"},
+	}}
+	repo := newRepo(registeredBob, viewedBobby)
+	f.repo = repo
+	svc := NewService(f, f, f, searchRepo{repo}, curriculum.ADBachelor(), time.Hour, 5*time.Minute,
+		slog.New(slog.NewTextHandler(io.Discard, nil)))
+	ctx := context.Background()
+
+	res, err := svc.Search(ctx, "Bo", 1, 10)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(res.Students) != 1 || res.Students[0].Login != "bob" {
+		t.Errorf("app students = %+v", res.Students)
+	}
+	// bob is registered (listed above), 3b3-x1 is anonymized: only bobby.
+	if len(res.Intra) != 1 || res.Intra[0].Login != "bobby" {
+		t.Errorf("intra = %+v", res.Intra)
+	}
+	if f.foreground.Load() != 0 {
+		t.Error("intra search was not marked as background work")
+	}
+
+	// Cached per query: the same search and page 2 cost nothing more.
+	svc.Search(ctx, "bo", 1, 10)
+	if res, _ := svc.Search(ctx, "bo", 2, 10); res.Intra != nil {
+		t.Errorf("page 2 intra = %+v, want none", res.Intra)
+	}
+	if n := f.searches.Load(); n != 1 {
+		t.Errorf("42 searches = %d, want 1", n)
+	}
+
+	// Too short, or not a login: no 42 call.
+	svc.Search(ctx, "b", 1, 10)
+	svc.Search(ctx, "Bob Smith", 1, 10)
+	if n := f.searches.Load(); n != 1 {
+		t.Errorf("42 searches = %d after short/non-login queries, want 1", n)
+	}
+
+	// 42 failing: app students are still returned.
+	f.fail = upstream.ErrBusy
+	res, err = svc.Search(ctx, "bob", 1, 10)
+	if err != nil || len(res.Students) != 1 || len(res.Intra) != 0 {
+		t.Errorf("with 42 down: %+v, %v", res, err)
 	}
 }

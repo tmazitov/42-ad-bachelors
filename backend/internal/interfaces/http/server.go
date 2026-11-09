@@ -18,6 +18,7 @@ import (
 	"github.com/tmazitov/42-ad-bachelors/backend/internal/application/auth"
 	"github.com/tmazitov/42-ad-bachelors/backend/internal/application/avatar"
 	"github.com/tmazitov/42-ad-bachelors/backend/internal/application/progress"
+	"github.com/tmazitov/42-ad-bachelors/backend/internal/application/projects"
 	"github.com/tmazitov/42-ad-bachelors/backend/internal/application/students"
 	"github.com/tmazitov/42-ad-bachelors/backend/internal/application/upstream"
 	"github.com/tmazitov/42-ad-bachelors/backend/internal/config"
@@ -32,6 +33,7 @@ type Deps struct {
 	Auth       *auth.Service
 	Students   *students.Service
 	Progress   *progress.Service
+	Projects   *projects.Service
 	Avatar     *avatar.Service
 	Log        *slog.Logger
 }
@@ -71,6 +73,7 @@ func NewServer(cfg config.Config, deps Deps) *fiber.App {
 	api.Put("/me/modules", signedIn, handlers.MarkMyModule(deps.Students))
 	api.Get("/students", signedIn, handlers.SearchStudents(deps.Students))
 	api.Get("/students/:login", signedIn, handlers.Student(deps.Students))
+	api.Get("/projects", signedIn, handlers.SearchProjects(deps.Projects))
 	api.Get("/leaderboard", signedIn, handlers.Leaderboard(deps.Progress))
 
 	return app

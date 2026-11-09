@@ -7,6 +7,7 @@ import (
 	"net/http"
 	"net/http/httptest"
 	"net/url"
+	"strings"
 	"testing"
 	"time"
 
@@ -336,5 +337,58 @@ func TestBackgroundCallsLeaveTheSignInReserve(t *testing.T) {
 		if _, err := c.Profile(context.Background(), "tok"); err != nil {
 			t.Fatalf("sign-in call %d from the reserve: %v", i+1, err)
 		}
+	}
+}
+
+func TestCursusProjectsPaginates(t *testing.T) {
+	var pages []string
+	c := newTestClient(t, func(w http.ResponseWriter, r *http.Request) {
+		if r.URL.Path != "/v2/cursus/21/projects" {
+			t.Errorf("path = %s", r.URL.Path)
+		}
+		page := r.URL.Query().Get("page")
+		pages = append(pages, page)
+		w.Header().Set("X-Total", "101")
+		if page == "1" {
+			var items []string
+			for i := range 100 {
+				items = append(items, fmt.Sprintf(`{"id":%d,"name":"p%d","slug":"s%d","exam":false,"parent":null}`, i+1, i, i))
+			}
+			fmt.Fprintf(w, "[%s]", strings.Join(items, ","))
+			return
+		}
+		w.Write([]byte(`[{"id":500,"name":"Exam","slug":"exam","exam":true,"parent":{"id":1}}]`))
+	})
+
+	got, err := c.CursusProjects(context.Background(), "tok")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(got) != 101 || len(pages) != 2 {
+		t.Fatalf("got %d projects in %d pages", len(got), len(pages))
+	}
+	if last := got[100]; last.ID != 500 || !last.Exam || !last.Child || got[0].Child {
+		t.Errorf("last = %+v, first child = %v", last, got[0].Child)
+	}
+}
+
+func TestSearchCampusUsers(t *testing.T) {
+	c := newTestClient(t, func(w http.ResponseWriter, r *http.Request) {
+		q := r.URL.Query()
+		if r.URL.Path != "/v2/campus/43/users" || q.Get("search[login]") != "bo" || q.Get("per_page") != "10" {
+			t.Errorf("request = %s", r.URL)
+		}
+		w.Write([]byte(`[{"id":2,"login":"bob","displayname":"Bob","image":{"link":"l","versions":{"medium":"m"}}},
+			{"id":3,"login":"3b3-anon","displayname":"","image":{}},
+			{"id":4,"login":"Bad Login","displayname":"x","image":{}}]`))
+	})
+
+	got, err := c.SearchCampusUsers(context.Background(), "tok", "bo", 10)
+	if err != nil {
+		t.Fatal(err)
+	}
+	// "3b3-anon" is a valid login pattern; "Bad Login" is skipped.
+	if len(got) != 2 || got[0].Login != "bob" || got[0].ImageURL != "m" || got[0].DisplayName != "Bob" {
+		t.Errorf("users = %+v", got)
 	}
 }

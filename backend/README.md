@@ -28,7 +28,8 @@ Docker: in production use the root `compose.yaml` (nginx entry point, frontend, 
 | POST | `/api/v1/auth/logout` | Ends the session (204) |
 | GET | `/api/v1/me` 🔒 | Signed-in student: profile, progress, validated projects |
 | GET | `/api/v1/students/:login` 🔒 | Any 42 student; fetched from 42 and stored if unknown. 404 if 42 has no such login |
-| GET | `/api/v1/students?search=&page=` 🔒 | Registered students matching login or display name, 10 per page |
+| GET | `/api/v1/students?search=&page=` 🔒 | Registered students matching login or display name, 10 per page. Page 1 also has `intra`: 42 Abu Dhabi students matching the login on 42 who never signed in (up to 10, cached 3 min per query; empty if 42 fails) |
+| GET | `/api/v1/projects?search=` 🔒 | 42cursus projects matching the name (up to 15, exams left out), each with the bachelor `modules` it counts for (empty: not in the bachelor). The catalogue is fetched from 42 once a day |
 | GET | `/api/v1/leaderboard` 🔒 | Synced registered students ranked by credits (ties share a rank) |
 | GET | `/api/v1/avatar?url=` | Session required. Proxies a `https://cdn.intra.42.fr/users/...` image. The CDN requires auth, so `<img>` can't load it directly. 400 for other URLs. Cached in a 50 MB LRU keyed by the URL without query/fragment; not-found answers cached 10 min |
 

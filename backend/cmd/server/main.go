@@ -18,6 +18,7 @@ import (
 	"github.com/tmazitov/42-ad-bachelors/backend/internal/application/auth"
 	"github.com/tmazitov/42-ad-bachelors/backend/internal/application/avatar"
 	"github.com/tmazitov/42-ad-bachelors/backend/internal/application/progress"
+	"github.com/tmazitov/42-ad-bachelors/backend/internal/application/projects"
 	"github.com/tmazitov/42-ad-bachelors/backend/internal/application/students"
 	"github.com/tmazitov/42-ad-bachelors/backend/internal/config"
 	"github.com/tmazitov/42-ad-bachelors/backend/internal/domain/curriculum"
@@ -84,6 +85,7 @@ func run() error {
 		Auth:       authSvc,
 		Students:   studentsSvc,
 		Progress:   progressSvc,
+		Projects:   projects.NewService(ftClient, ftClient, bachelor),
 		Avatar:     avatar.NewService(ftClient),
 		Log:        log,
 	})

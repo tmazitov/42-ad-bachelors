@@ -77,7 +77,7 @@ function openMyProgress() {
           rounded
           outlined
           severity="secondary"
-          aria-label="Search students"
+          aria-label="Search projects and students"
           @click="searchVisible = true"
         />
 

@@ -17,6 +17,7 @@ import (
 
 	"github.com/tmazitov/42-ad-bachelors/backend/internal/application/auth"
 	"github.com/tmazitov/42-ad-bachelors/backend/internal/application/progress"
+	"github.com/tmazitov/42-ad-bachelors/backend/internal/application/projects"
 	"github.com/tmazitov/42-ad-bachelors/backend/internal/application/upstream"
 	"github.com/tmazitov/42-ad-bachelors/backend/internal/domain/curriculum"
 	"github.com/tmazitov/42-ad-bachelors/backend/internal/domain/student"
@@ -35,6 +36,12 @@ const maxRetries = 3
 // use: background calls (upstream.Background) are refused below it.
 const signInReserve = 0.1
 
+// cursusID is 42cursus, the curriculum the bachelor builds on.
+const cursusID = 21
+
+// defaultCampusID is 42 Abu Dhabi, where student search looks for users.
+const defaultCampusID = 43
+
 // defaultMaxWait is how long a request may wait for the rate limiters or a
 // 429's Retry-After before failing with upstream.ErrBusy.
 const defaultMaxWait = 5 * time.Second
@@ -51,6 +58,9 @@ type Config struct {
 	// MaxWait caps the wait for a rate limiter or Retry-After; longer waits
 	// fail with upstream.ErrBusy. 0 means 5s.
 	MaxWait time.Duration
+	// CampusID is the campus whose users SearchCampusUsers returns; 0 means
+	// 42 Abu Dhabi (43).
+	CampusID int
 }
 
 // Client talks to the 42 API. It implements auth.Provider,
@@ -77,6 +87,9 @@ func NewClient(cfg Config) *Client {
 	if cfg.MaxWait <= 0 {
 		cfg.MaxWait = defaultMaxWait
 	}
+	if cfg.CampusID <= 0 {
+		cfg.CampusID = defaultCampusID
+	}
 	return &Client{
 		cfg:       cfg,
 		http:      &http.Client{Timeout: 15 * time.Second},
@@ -88,6 +101,7 @@ func NewClient(cfg Config) *Client {
 var (
 	_ auth.Provider          = (*Client)(nil)
 	_ progress.ProjectSource = (*Client)(nil)
+	_ projects.Catalog       = (*Client)(nil)
 )
 
 // AuthorizeURL is the 42 page where the user approves the sign-in; 42 then
@@ -161,6 +175,30 @@ func (c *Client) UserByLogin(ctx context.Context, accessToken, login string) (st
 	return c.user(ctx, accessToken, "/v2/users/"+url.PathEscape(login))
 }
 
+// SearchCampusUsers returns up to limit users of the campus whose login
+// matches query (42's search[login]), ordered by login.
+func (c *Client) SearchCampusUsers(ctx context.Context, accessToken, query string, limit int) ([]student.Student, error) {
+	q := url.Values{"search[login]": {query}, "sort": {"login"}, "per_page": {strconv.Itoa(limit)}}
+	path := fmt.Sprintf("/v2/campus/%d/users", c.cfg.CampusID)
+	req, err := http.NewRequestWithContext(ctx, http.MethodGet, c.cfg.BaseURL+path+"?"+q.Encode(), nil)
+	if err != nil {
+		return nil, err
+	}
+	req.Header.Set("Authorization", "Bearer "+accessToken)
+
+	var users []userResponse
+	if _, err := c.do(req, &users); err != nil {
+		return nil, fmt.Errorf("42 %s: %w", path, err)
+	}
+	out := make([]student.Student, 0, len(users))
+	for _, u := range users {
+		if s, err := u.student(); err == nil { // skip anonymized or odd logins
+			out = append(out, s)
+		}
+	}
+	return out, nil
+}
+
 func (c *Client) user(ctx context.Context, accessToken, path string) (student.Student, error) {
 	req, err := http.NewRequestWithContext(ctx, http.MethodGet, c.cfg.BaseURL+path, nil)
 	if err != nil {
@@ -177,16 +215,69 @@ func (c *Client) user(ctx context.Context, accessToken, path string) (student.St
 		return student.Student{}, fmt.Errorf("42 %s: %w", path, err)
 	}
 
+	s, err := u.student()
+	if err != nil {
+		return student.Student{}, fmt.Errorf("42 %s: %w", path, err)
+	}
+	return s, nil
+}
+
+func (u userResponse) student() (student.Student, error) {
 	image := u.Image.Versions.Medium
 	if image == "" {
 		image = u.Image.Link
 	}
 	s, err := student.New(student.ID(u.ID), u.Login, u.DisplayName, image)
 	if err != nil {
-		return student.Student{}, fmt.Errorf("42 %s: %w", path, err)
+		return student.Student{}, err
 	}
 	s.Staff, s.Alumni = u.Staff, u.Alumni
 	return s, nil
+}
+
+const (
+	catalogPerPage  = 100
+	maxCatalogPages = 20
+)
+
+type cursusProjectResponse struct {
+	ID     int    `json:"id"`
+	Name   string `json:"name"`
+	Slug   string `json:"slug"`
+	Exam   bool   `json:"exam"`
+	Parent *struct {
+		ID int `json:"id"`
+	} `json:"parent"`
+}
+
+// CursusProjects returns every 42cursus project, following pagination.
+func (c *Client) CursusProjects(ctx context.Context, accessToken string) ([]projects.Project, error) {
+	var out []projects.Project
+	for page := 1; page <= maxCatalogPages; page++ {
+		u := fmt.Sprintf("%s/v2/cursus/%d/projects?per_page=%d&page=%d", c.cfg.BaseURL, cursusID, catalogPerPage, page)
+		req, err := http.NewRequestWithContext(ctx, http.MethodGet, u, nil)
+		if err != nil {
+			return nil, err
+		}
+		req.Header.Set("Authorization", "Bearer "+accessToken)
+
+		var batch []cursusProjectResponse
+		header, err := c.do(req, &batch)
+		if err != nil {
+			return nil, fmt.Errorf("42 cursus projects page %d: %w", page, err)
+		}
+		for _, p := range batch {
+			out = append(out, projects.Project{
+				ID: curriculum.ProjectID(p.ID), Name: p.Name, Slug: p.Slug, Exam: p.Exam, Child: p.Parent != nil,
+			})
+		}
+
+		total, _ := strconv.Atoi(header.Get("X-Total"))
+		if len(batch) < catalogPerPage || (total > 0 && page*catalogPerPage >= total) {
+			return out, nil
+		}
+	}
+	return nil, fmt.Errorf("42 cursus projects: more than %d pages", maxCatalogPages)
 }
 
 const (

@@ -41,6 +41,16 @@ const (
 	notFoundMaxEntries = 5000
 )
 
+// Intra search: students who never signed in are found on 42 by login.
+// Results are cached per query so typing and paging cost few API calls.
+const (
+	intraSearchLimit      = 10
+	intraSearchMinLength  = 2
+	intraSearchTTL        = 3 * time.Minute
+	intraSearchMaxQueries = 1000
+	intraSearchTimeout    = 10 * time.Second
+)
+
 // refreshTimeout bounds a 42 refresh, which is shared by concurrent callers
 // and so does not use any single caller's context.
 const refreshTimeout = 30 * time.Second
@@ -49,6 +59,9 @@ const refreshTimeout = 30 * time.Second
 type ProfileSource interface {
 	// UserByLogin returns the user, or student.ErrNotFound.
 	UserByLogin(ctx context.Context, accessToken, login string) (student.Student, error)
+	// SearchCampusUsers returns up to limit users of the app's campus whose
+	// login matches query.
+	SearchCampusUsers(ctx context.Context, accessToken, query string, limit int) ([]student.Student, error)
 }
 
 // ProjectSyncer refreshes a student's stored projects.
@@ -86,6 +99,8 @@ type Service struct {
 	background sync.WaitGroup
 	// notFound holds logins 42 answered 404 for.
 	notFound *cache.TTL[string, struct{}]
+	// intra holds 42 campus search results by query.
+	intra *cache.TTL[string, []student.Student]
 }
 
 func NewService(profiles ProfileSource, projects ProjectSyncer, tokens AppTokenSource,
@@ -102,6 +117,7 @@ func NewService(profiles ProfileSource, projects ProjectSyncer, tokens AppTokenS
 		log:           log,
 		now:           time.Now,
 		notFound:      cache.NewTTL[string, struct{}](notFoundTTL, notFoundMaxEntries),
+		intra:         cache.NewTTL[string, []student.Student](intraSearchTTL, intraSearchMaxQueries),
 	}
 }
 
@@ -252,13 +268,17 @@ func (s *Service) view(st student.Student) View {
 	return View{Student: st, Progress: s.curriculum.Evaluate(st.Validated(), st.Marked(), st.Stream)}
 }
 
-// SearchResult is one page of matching registered students.
+// SearchResult is one page of matching registered students, plus (on the
+// first page) campus students on 42 who never signed in to the app.
 type SearchResult struct {
 	Students []student.Student
 	Total    int
+	Intra    []student.Student
 }
 
-// Search finds registered students by login or display name.
+// Search finds registered students by login or display name. On the first
+// page it also looks the query up on 42 (logins of the app's campus) and adds
+// matches that are not registered; if 42 fails, Intra is just empty.
 func (s *Service) Search(ctx context.Context, query string, page, pageSize int) (SearchResult, error) {
 	query = strings.TrimSpace(query)
 	if query == "" {
@@ -269,5 +289,46 @@ func (s *Service) Search(ctx context.Context, query string, page, pageSize int) 
 	if err != nil {
 		return SearchResult{}, err
 	}
-	return SearchResult{Students: list, Total: total}, nil
+	res := SearchResult{Students: list, Total: total}
+	if page == 1 {
+		res.Intra = s.searchIntra(ctx, query)
+	}
+	return res, nil
+}
+
+// searchIntra returns campus users on 42 matching query by login who are
+// not registered in the app.
+func (s *Service) searchIntra(ctx context.Context, query string) []student.Student {
+	q := strings.ToLower(query)
+	if len(q) < intraSearchMinLength || !student.ValidLogin(q) {
+		return nil // logins only; display names can't be searched on 42
+	}
+
+	users, ok := s.intra.Get(q)
+	if !ok {
+		ctx, cancel := context.WithTimeout(upstream.Background(ctx), intraSearchTimeout)
+		defer cancel()
+		token, err := s.tokens.AppToken(ctx)
+		if err == nil {
+			users, err = s.profiles.SearchCampusUsers(ctx, token, q, intraSearchLimit)
+		}
+		if err != nil {
+			s.log.WarnContext(ctx, "intra student search failed", "query", q, "err", err)
+			return nil
+		}
+		s.intra.Set(q, users)
+	}
+
+	var out []student.Student
+	for _, u := range users {
+		if strings.HasPrefix(u.Login, "3b3-") { // anonymized accounts
+			continue
+		}
+		stored, err := s.students.FindByLogin(ctx, u.Login)
+		if err == nil && stored.Registered() {
+			continue // listed with the app's students
+		}
+		out = append(out, u)
+	}
+	return out
 }
