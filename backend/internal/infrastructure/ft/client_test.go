@@ -314,3 +314,27 @@ func TestPersistent429IsBusy(t *testing.T) {
 		t.Fatalf("err = %v, want ErrBusy", err)
 	}
 }
+
+func TestBackgroundCallsLeaveTheSignInReserve(t *testing.T) {
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Write([]byte(`{"id":1,"login":"x"}`))
+	}))
+	t.Cleanup(srv.Close)
+	// 20 per hour: 2 are kept for sign-ins.
+	c := NewClient(Config{BaseURL: srv.URL, RatePerSecond: 100, RatePerHour: 20})
+	bg := upstream.Background(context.Background())
+
+	for i := range 18 {
+		if _, err := c.UserByLogin(bg, "tok", "x"); err != nil {
+			t.Fatalf("background call %d: %v", i+1, err)
+		}
+	}
+	if _, err := c.UserByLogin(bg, "tok", "x"); !errors.Is(err, upstream.ErrBusy) {
+		t.Fatalf("background call into the reserve: err = %v, want ErrBusy", err)
+	}
+	for i := range 2 {
+		if _, err := c.Profile(context.Background(), "tok"); err != nil {
+			t.Fatalf("sign-in call %d from the reserve: %v", i+1, err)
+		}
+	}
+}

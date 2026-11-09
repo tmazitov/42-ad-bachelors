@@ -74,9 +74,20 @@ sees a 42 token and never calls the 42 API. The frontend must be served from `PU
 the API, so the cookie is first-party. 42 redirects to the app's `/auth/callback` page (it shows a loader while
 the backend signs the user in); register `PUBLIC_URL/auth/callback` on the 42 app.
 
-`application/students` serves profiles from SQLite. Data older than `STUDENT_MAX_AGE` (default 2m) is
-refreshed from 42 with the app token before responding; concurrent requests share one refresh (singleflight);
-if 42 fails, the stored data is returned. Students looked up this way are stored but not registered.
+`application/students` serves profiles from SQLite and refreshes them from 42 with the app token:
+- registered students are answered from the database at once; data older than `STUDENT_MAX_AGE` (default 60m) is
+  refreshed in the background
+- other students (only viewed) are refreshed before responding when their data is older than `VISITOR_MAX_AGE`
+  (default 5m); if 42 fails, the stored data is returned. They are stored but not registered.
+
+Concurrent requests share one refresh (singleflight).
+
+### 42 API budget
+All 42 calls share one rate limiter (`FT_RATE_PER_SECOND`, `FT_RATE_PER_HOUR`).
+- A call waits at most 5s for a token or a 429 `Retry-After`. Longer waits fail at once with `upstream.ErrBusy`,
+  which the API answers as 503 (`{"error":"busy"}` on the sign-in callback).
+- Background work (refreshes, lookups, the sync; marked with `upstream.Background`) leaves the last 10% of the
+  hourly budget to sign-ins.
 
 ### Background sync
 `interfaces/scheduler` runs `progress.SyncAll` at startup and then every `SYNC_INTERVAL` (default `1h`; `0` turns it off).

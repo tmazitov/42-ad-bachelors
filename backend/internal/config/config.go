@@ -21,9 +21,12 @@ type Config struct {
 	ShutdownTimeout time.Duration
 	// SessionTTL is how long a sign-in lasts.
 	SessionTTL time.Duration
-	// StudentMaxAge: a student's data older than this is refreshed from 42
-	// before it is returned by the API.
+	// StudentMaxAge: a registered student's data older than this is
+	// refreshed from 42 in the background (the stored data is returned).
 	StudentMaxAge time.Duration
+	// VisitorMaxAge: data of a student who never signed in that is older
+	// than this is refreshed from 42 before it is returned.
+	VisitorMaxAge time.Duration
 	// SyncInterval is how often the background sync runs; 0 disables it.
 	SyncInterval time.Duration
 	// SyncMaxAge: the background sync only re-syncs students whose last sync
@@ -91,7 +94,8 @@ func Load() (Config, error) {
 		min      time.Duration
 	}{
 		{"SESSION_TTL", "720h", &cfg.SessionTTL, time.Minute},
-		{"STUDENT_MAX_AGE", "2m", &cfg.StudentMaxAge, 0},
+		{"STUDENT_MAX_AGE", "60m", &cfg.StudentMaxAge, 0},
+		{"VISITOR_MAX_AGE", "5m", &cfg.VisitorMaxAge, 0},
 		{"SYNC_INTERVAL", "1h", &cfg.SyncInterval, 0},
 		{"SYNC_MAX_AGE", "24h", &cfg.SyncMaxAge, 0},
 	} {

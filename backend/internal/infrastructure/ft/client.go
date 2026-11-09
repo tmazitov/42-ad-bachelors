@@ -31,6 +31,10 @@ const (
 // maxRetries is how many times a 429 response is retried.
 const maxRetries = 3
 
+// signInReserve is the share of the hourly budget that only sign-ins may
+// use: background calls (upstream.Background) are refused below it.
+const signInReserve = 0.1
+
 // defaultMaxWait is how long a request may wait for the rate limiters or a
 // 429's Retry-After before failing with upstream.ErrBusy.
 const defaultMaxWait = 5 * time.Second
@@ -284,8 +288,13 @@ func (c *Client) do(req *http.Request, out any) (http.Header, error) {
 
 // wait takes a token from both limiters, sleeping for at most MaxWait. If the
 // tokens would come later, nothing is taken and upstream.ErrBusy is returned.
+// Background calls are also refused when taking a token would dip into the
+// part of the hourly budget kept for sign-ins.
 func (c *Client) wait(ctx context.Context) error {
 	now := time.Now()
+	if upstream.IsBackground(ctx) && c.perHour.TokensAt(now)-1 < signInReserve*float64(c.cfg.RatePerHour) {
+		return upstream.ErrBusy
+	}
 	hour := c.perHour.ReserveN(now, 1)
 	second := c.perSecond.ReserveN(now, 1)
 	cancel := func() {

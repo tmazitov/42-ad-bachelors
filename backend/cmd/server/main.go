@@ -74,11 +74,15 @@ func run() error {
 	progressSvc := progress.NewService(ftClient, ftClient, studentRepo, bachelor)
 	authSvc := auth.NewService(ftClient, studentRepo, sqlite.NewSessionRepository(db), progressSvc, cfg.SessionTTL, log)
 
+	studentsSvc := students.NewService(ftClient, progressSvc, ftClient, studentRepo, bachelor,
+		cfg.StudentMaxAge, cfg.VisitorMaxAge, log)
+	defer studentsSvc.Wait() // background refreshes, before the database is closed
+
 	app := httpapi.NewServer(cfg, httpapi.Deps{
 		DB:         db,
 		Curriculum: bachelor,
 		Auth:       authSvc,
-		Students:   students.NewService(ftClient, progressSvc, ftClient, studentRepo, bachelor, cfg.StudentMaxAge, log),
+		Students:   studentsSvc,
 		Progress:   progressSvc,
 		Avatar:     avatar.NewService(ftClient),
 		Log:        log,

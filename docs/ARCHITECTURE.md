@@ -175,14 +175,22 @@ Response shape consumed by `LeaderboardView.vue`:
    `POST /api/v1/auth/callback`. The backend checks the state against the cookie, exchanges the code, reads
    `/v2/me` with the user's token, saves the student as **registered**, syncs their validated projects and
    creates a session: httpOnly `session` cookie (SameSite=Lax, Secure on https, `SESSION_TTL`, default 30 days),
-   204. Failures return 400 `{"error": "denied"|"state"|"failed"}` and the SPA shows `/?login_error=…`.
+   204. Failures return 400 `{"error": "denied"|"state"|"failed"}`, or 503 `{"error": "busy"}` when the 42
+   API budget is used up, and the SPA shows `/?login_error=…`.
    The 42 user token is discarded after the login.
 3. The SPA calls `GET /api/v1/me` on start (router guard, "Loading…" until it answers). `/profile/:login` and
    `/leaderboard` require a session.
-4. Reads: `/api/v1/me`, `/api/v1/students/:login` return stored data. If it is older than `STUDENT_MAX_AGE`
-   (default 2m) it is refreshed from 42 **before** responding, with the app token (`client_credentials`);
-   concurrent requests for one student share one refresh; if 42 fails, stored data is served. Unknown logins are
-   fetched and stored but **not registered** (not ranked, searched or background-synced).
+4. Reads: `/api/v1/me`, `/api/v1/students/:login` return stored data, refreshed from 42 with the app token
+   (`client_credentials`):
+   - registered students: answered from the DB at once; data older than `STUDENT_MAX_AGE` (default 60m) is
+     refreshed in the **background**
+   - others: refreshed **before** responding when older than `VISITOR_MAX_AGE` (default 5m); if 42 fails,
+     stored data is served. Unknown logins are fetched and stored but **not registered** (not ranked, searched
+     or background-synced).
+
+   Concurrent requests for one student share one refresh.
+   42 calls wait at most 5s for the rate limiter. Otherwise they fail and the API answers 503 ("42 is busy").
+   Background work leaves the last 10% of the hourly budget to sign-ins.
 5. Search (`/api/v1/students?search=`) only covers registered students, from the DB.
 6. Only validated projects are stored, so in-progress projects and location are not shown.
 7. `POST /api/v1/auth/logout` deletes the session. Expired sessions are purged by the hourly job.
@@ -199,7 +207,8 @@ The frontend needs **none** (see `frontend/.env.example`). Backend: see `backend
 | `PUBLIC_URL` | `http://localhost:5173` | where users open the app; cookies are Secure when https |
 | `FT_REDIRECT_URI` | `PUBLIC_URL/auth/callback` | the SPA callback page; must be registered on the 42 app |
 | `SESSION_TTL` | `720h` | sign-in lifetime |
-| `STUDENT_MAX_AGE` | `2m` | stored data older than this is refreshed before an API response |
+| `STUDENT_MAX_AGE` | `60m` | a registered student's data older than this is refreshed in the background |
+| `VISITOR_MAX_AGE` | `5m` | data of a student who never signed in older than this is refreshed before responding |
 | `SYNC_INTERVAL` / `SYNC_MAX_AGE` | `1h` / `24h` | background sync of registered students |
 | `FT_RATE_PER_SECOND` / `FT_RATE_PER_HOUR` | `2` / `1200` | 42 API limits shared by all backend calls |
 | `HTTP_ADDR`, `DATABASE_PATH`, `LOG_LEVEL` | `:8080`, `./data/app.db`, `info` | |

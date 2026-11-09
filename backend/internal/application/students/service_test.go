@@ -10,6 +10,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/tmazitov/42-ad-bachelors/backend/internal/application/upstream"
 	"github.com/tmazitov/42-ad-bachelors/backend/internal/domain/curriculum"
 	"github.com/tmazitov/42-ad-bachelors/backend/internal/domain/student"
 )
@@ -113,12 +114,17 @@ type fake42 struct {
 	fail    error
 	delay   time.Duration
 	lookups atomic.Int32
+	// foreground counts lookups not marked upstream.Background.
+	foreground atomic.Int32
 }
 
 func (f *fake42) AppToken(context.Context) (string, error) { return "app", nil }
 
-func (f *fake42) UserByLogin(_ context.Context, _, login string) (student.Student, error) {
+func (f *fake42) UserByLogin(ctx context.Context, _, login string) (student.Student, error) {
 	f.lookups.Add(1)
+	if !upstream.IsBackground(ctx) {
+		f.foreground.Add(1)
+	}
 	time.Sleep(f.delay)
 	if f.fail != nil {
 		return student.Student{}, f.fail
@@ -136,7 +142,7 @@ func (f *fake42) SyncStudent(ctx context.Context, _ string, id student.ID) error
 
 func newService(repo *memRepo, f *fake42) *Service {
 	f.repo = repo
-	svc := NewService(f, f, f, repo, curriculum.ADBachelor(), 2*time.Minute,
+	svc := NewService(f, f, f, repo, curriculum.ADBachelor(), 2*time.Minute, 5*time.Minute,
 		slog.New(slog.NewTextHandler(io.Discard, nil)))
 	svc.now = func() time.Time { return now }
 	return svc
@@ -273,5 +279,75 @@ func TestMarkModule(t *testing.T) {
 	}
 	if _, err := svc.MarkModule(ctx, 99, "GEN 101", true); !errors.Is(err, student.ErrNotFound) {
 		t.Errorf("unknown student err = %v, want ErrNotFound", err)
+	}
+}
+
+func TestRegisteredStaleIsServedAtOnceAndRefreshedInBackground(t *testing.T) {
+	alice := student.Student{ID: 1, Login: "alice", DisplayName: "Old Alice", RegisteredAt: now.Add(-48 * time.Hour),
+		ProjectsSyncedAt: now.Add(-3 * time.Minute)} // older than maxAge (2m in tests)
+	f := &fake42{users: map[string]student.Student{"alice": {ID: 1, Login: "alice", DisplayName: "New Alice"}},
+		delay: 200 * time.Millisecond}
+	repo := newRepo(alice)
+	svc := newService(repo, f)
+
+	start := time.Now()
+	v, err := svc.ByLogin(context.Background(), "alice")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if v.Student.DisplayName != "Old Alice" || time.Since(start) > 100*time.Millisecond {
+		t.Errorf("got %q after %v, want the stored data at once", v.Student.DisplayName, time.Since(start))
+	}
+
+	svc.Wait()
+	st, _ := repo.FindByID(context.Background(), 1)
+	if st.DisplayName != "New Alice" || !st.ProjectsSyncedAt.Equal(now) {
+		t.Errorf("after background refresh: %+v", st)
+	}
+	if f.lookups.Load() != 1 || f.foreground.Load() != 0 {
+		t.Errorf("lookups = %d (%d not marked background), want 1 background", f.lookups.Load(), f.foreground.Load())
+	}
+
+	// Fresh again: no 42 call.
+	if _, err := svc.ByID(context.Background(), 1); err != nil {
+		t.Fatal(err)
+	}
+	svc.Wait()
+	if f.lookups.Load() != 1 {
+		t.Errorf("lookups = %d after a fresh read, want 1", f.lookups.Load())
+	}
+}
+
+func TestRegisteredNeverSyncedIsRefreshedBeforeAnswering(t *testing.T) {
+	alice := student.Student{ID: 1, Login: "alice", DisplayName: "Alice", RegisteredAt: now}
+	f := &fake42{users: map[string]student.Student{"alice": {ID: 1, Login: "alice", DisplayName: "Alice"}}}
+	svc := newService(newRepo(alice), f)
+
+	v, err := svc.ByID(context.Background(), 1)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if v.Progress.Total != 4 || f.lookups.Load() != 1 {
+		t.Errorf("total = %d, lookups = %d; want the synced projects", v.Progress.Total, f.lookups.Load())
+	}
+}
+
+func TestVisitorMaxAge(t *testing.T) {
+	for _, tt := range []struct {
+		age     time.Duration
+		lookups int32
+	}{
+		{4 * time.Minute, 0}, // within visitorMaxAge (5m in tests)
+		{6 * time.Minute, 1},
+	} {
+		bob := student.Student{ID: 2, Login: "bob", DisplayName: "Bob", ProjectsSyncedAt: now.Add(-tt.age)}
+		f := &fake42{users: map[string]student.Student{"bob": bob}}
+		svc := newService(newRepo(bob), f)
+		if _, err := svc.ByLogin(context.Background(), "bob"); err != nil {
+			t.Fatal(err)
+		}
+		if f.lookups.Load() != tt.lookups {
+			t.Errorf("visitor synced %v ago: lookups = %d, want %d", tt.age, f.lookups.Load(), tt.lookups)
+		}
 	}
 }

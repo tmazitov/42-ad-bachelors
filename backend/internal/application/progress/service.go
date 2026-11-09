@@ -77,6 +77,8 @@ func (s *Service) SyncAll(ctx context.Context, maxAge time.Duration) (report Syn
 	if err != nil {
 		return report, fmt.Errorf("list students: %w", err)
 	}
+	// Leave the part of the 42 budget kept for sign-ins alone.
+	ctx = upstream.Background(ctx)
 	report.Students = len(students)
 
 	now := s.now()

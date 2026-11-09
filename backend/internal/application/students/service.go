@@ -1,6 +1,10 @@
-// Package students serves student profiles and progress from the database.
-// Before answering, data older than maxAge is refreshed from 42 with the app
-// token, so the browser never calls the 42 API itself.
+// Package students serves student profiles and progress from the database,
+// refreshing them from 42 with the app token, so the browser never calls the
+// 42 API itself:
+//   - registered students (signed in to the app) are answered from the
+//     database at once; data older than maxAge is refreshed in the background
+//   - other students (only viewed) are refreshed before answering when their
+//     data is older than visitorMaxAge
 package students
 
 import (
@@ -9,10 +13,12 @@ import (
 	"fmt"
 	"log/slog"
 	"strings"
+	"sync"
 	"time"
 
 	"golang.org/x/sync/singleflight"
 
+	"github.com/tmazitov/42-ad-bachelors/backend/internal/application/upstream"
 	"github.com/tmazitov/42-ad-bachelors/backend/internal/domain/curriculum"
 	"github.com/tmazitov/42-ad-bachelors/backend/internal/domain/student"
 )
@@ -60,25 +66,38 @@ type Service struct {
 	tokens     AppTokenSource
 	students   student.Repository
 	curriculum curriculum.Curriculum
-	maxAge     time.Duration
-	log        *slog.Logger
-	now        func() time.Time
+	// maxAge is how old a registered student's data may get before it is
+	// refreshed in the background; visitorMaxAge is the same for students
+	// who never signed in, refreshed before answering.
+	maxAge        time.Duration
+	visitorMaxAge time.Duration
+	log           *slog.Logger
+	now           func() time.Time
 
-	refreshes singleflight.Group
+	refreshes  singleflight.Group
+	background sync.WaitGroup
 }
 
 func NewService(profiles ProfileSource, projects ProjectSyncer, tokens AppTokenSource,
-	students student.Repository, c curriculum.Curriculum, maxAge time.Duration, log *slog.Logger) *Service {
+	students student.Repository, c curriculum.Curriculum, maxAge, visitorMaxAge time.Duration,
+	log *slog.Logger) *Service {
 	return &Service{
-		profiles:   profiles,
-		projects:   projects,
-		tokens:     tokens,
-		students:   students,
-		curriculum: c,
-		maxAge:     maxAge,
-		log:        log,
-		now:        time.Now,
+		profiles:      profiles,
+		projects:      projects,
+		tokens:        tokens,
+		students:      students,
+		curriculum:    c,
+		maxAge:        maxAge,
+		visitorMaxAge: visitorMaxAge,
+		log:           log,
+		now:           time.Now,
 	}
+}
+
+// Wait blocks until background refreshes have finished, e.g. before the
+// database is closed.
+func (s *Service) Wait() {
+	s.background.Wait()
 }
 
 // ByLogin returns any 42 student's profile and progress. Students not stored
@@ -135,10 +154,19 @@ func (s *Service) MarkModule(ctx context.Context, id student.ID, code string, co
 	return s.view(st), nil
 }
 
-// fresh returns st, refreshing it from 42 first if it is missing or stale.
-// If the refresh fails but stored data exists, the stored data is returned.
+// fresh returns st, refreshing it from 42 when it is stale (see the package
+// comment). A registered student's stored data is returned at once and
+// refreshed in the background. Others are refreshed before answering; if that
+// fails but stored data exists, the stored data is returned.
 func (s *Service) fresh(ctx context.Context, login string, st student.Student, stored bool) (View, error) {
-	if stored && !st.NeedsSync(s.now(), s.maxAge) {
+	now := s.now()
+	if stored && st.Registered() && !st.ProjectsSyncedAt.IsZero() {
+		if st.NeedsSync(now, s.maxAge) {
+			s.refreshInBackground(login)
+		}
+		return s.view(st), nil
+	}
+	if stored && !st.NeedsSync(now, s.visitorMaxAge) {
 		return s.view(st), nil
 	}
 
@@ -154,11 +182,22 @@ func (s *Service) fresh(ctx context.Context, login string, st student.Student, s
 	}
 }
 
+// refreshInBackground starts a refresh that outlives the request; a failure
+// is logged and the stored data stays.
+func (s *Service) refreshInBackground(login string) {
+	s.background.Go(func() {
+		if _, err := s.refresh(context.Background(), login); err != nil {
+			s.log.Warn("background refresh failed", "login", login, "err", err)
+		}
+	})
+}
+
 // refresh fetches the student's profile and projects from 42 and stores them.
-// Concurrent refreshes of the same login share one 42 round trip.
+// Concurrent refreshes of the same login share one 42 round trip. Its 42
+// calls are background work (upstream.Background).
 func (s *Service) refresh(ctx context.Context, login string) (student.Student, error) {
 	ch := s.refreshes.DoChan(login, func() (any, error) {
-		ctx, cancel := context.WithTimeout(context.WithoutCancel(ctx), refreshTimeout)
+		ctx, cancel := context.WithTimeout(upstream.Background(context.WithoutCancel(ctx)), refreshTimeout)
 		defer cancel()
 
 		token, err := s.tokens.AppToken(ctx)
