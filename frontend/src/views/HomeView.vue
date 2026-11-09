@@ -14,6 +14,7 @@ const LOGIN_ERRORS: Record<string, string> = {
   denied: 'Sign-in was cancelled on 42.',
   state: 'Sign-in expired or was tampered with. Please try again.',
   failed: 'Could not sign in with 42. Please try again.',
+  busy: '42 is busy right now. Please try signing in again in a minute.',
 }
 const loginError = computed(() => {
   const reason = route.query.login_error

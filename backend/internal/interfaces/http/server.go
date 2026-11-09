@@ -19,6 +19,7 @@ import (
 	"github.com/tmazitov/42-ad-bachelors/backend/internal/application/avatar"
 	"github.com/tmazitov/42-ad-bachelors/backend/internal/application/progress"
 	"github.com/tmazitov/42-ad-bachelors/backend/internal/application/students"
+	"github.com/tmazitov/42-ad-bachelors/backend/internal/application/upstream"
 	"github.com/tmazitov/42-ad-bachelors/backend/internal/config"
 	"github.com/tmazitov/42-ad-bachelors/backend/internal/domain/curriculum"
 	"github.com/tmazitov/42-ad-bachelors/backend/internal/interfaces/http/handlers"
@@ -73,13 +74,18 @@ func NewServer(cfg config.Config, deps Deps) *fiber.App {
 	return app
 }
 
-// errorHandler renders every error as {"error": "..."}. Errors that are not
-// *fiber.Error are logged and hidden behind a generic 500.
+// errorHandler renders every error as {"error": "..."}. A used-up 42 API
+// budget is a 503. Other errors that are not *fiber.Error are logged and
+// hidden behind a generic 500.
 func errorHandler(log *slog.Logger) fiber.ErrorHandler {
 	return func(c fiber.Ctx, err error) error {
 		var fe *fiber.Error
 		if errors.As(err, &fe) {
 			return c.Status(fe.Code).JSON(fiber.Map{"error": fe.Message})
+		}
+		if errors.Is(err, upstream.ErrBusy) {
+			c.Set(fiber.HeaderRetryAfter, "60")
+			return c.Status(fiber.StatusServiceUnavailable).JSON(fiber.Map{"error": err.Error()})
 		}
 		log.Error("unhandled error",
 			"err", err,

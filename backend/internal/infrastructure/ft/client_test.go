@@ -12,6 +12,7 @@ import (
 
 	"github.com/tmazitov/42-ad-bachelors/backend/internal/application/auth"
 	"github.com/tmazitov/42-ad-bachelors/backend/internal/application/avatar"
+	"github.com/tmazitov/42-ad-bachelors/backend/internal/application/upstream"
 	"github.com/tmazitov/42-ad-bachelors/backend/internal/domain/student"
 )
 
@@ -235,15 +236,81 @@ func TestHourlyBudgetBlocks(t *testing.T) {
 	t.Cleanup(srv.Close)
 	c := NewClient(Config{BaseURL: srv.URL, RatePerSecond: 100, RatePerHour: 2})
 
-	ctx, cancel := context.WithTimeout(context.Background(), 200*time.Millisecond)
-	defer cancel()
+	ctx := context.Background()
 	for i := range 2 {
 		if _, err := c.Profile(ctx, "tok"); err != nil {
 			t.Fatalf("request %d within budget: %v", i+1, err)
 		}
 	}
-	// The third request would have to wait ~30 minutes for the bucket to refill.
-	if _, err := c.Profile(ctx, "tok"); err == nil {
-		t.Fatal("third request should exceed the hourly budget")
+	// The third request would have to wait ~30 minutes for the bucket to
+	// refill: it fails at once instead of blocking.
+	start := time.Now()
+	if _, err := c.Profile(ctx, "tok"); !errors.Is(err, upstream.ErrBusy) {
+		t.Fatalf("third request err = %v, want ErrBusy", err)
+	}
+	if d := time.Since(start); d > 100*time.Millisecond {
+		t.Errorf("busy request took %v, want an immediate failure", d)
+	}
+}
+
+func TestShortWaitsAreAllowedAndRefusedOnesCostNothing(t *testing.T) {
+	var calls int
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		calls++
+		w.Write([]byte(`{"id":1,"login":"x"}`))
+	}))
+	t.Cleanup(srv.Close)
+	ctx := context.Background()
+
+	// 1 request per second, wait up to 2s: the second request waits ~1s.
+	c := NewClient(Config{BaseURL: srv.URL, RatePerSecond: 1, RatePerHour: 100, MaxWait: 2 * time.Second})
+	for i := range 2 {
+		if _, err := c.Profile(ctx, "tok"); err != nil {
+			t.Fatalf("request %d: %v", i+1, err)
+		}
+	}
+
+	// Wait up to 50ms: the second request is refused without using the budget.
+	c = NewClient(Config{BaseURL: srv.URL, RatePerSecond: 1, RatePerHour: 100, MaxWait: 50 * time.Millisecond})
+	if _, err := c.Profile(ctx, "tok"); err != nil {
+		t.Fatal(err)
+	}
+	before := c.perHour.Tokens()
+	if _, err := c.Profile(ctx, "tok"); !errors.Is(err, upstream.ErrBusy) {
+		t.Fatalf("err = %v, want ErrBusy", err)
+	}
+	if after := c.perHour.Tokens(); after < before-0.01 {
+		t.Errorf("hourly tokens %.2f -> %.2f: a refused request used the budget", before, after)
+	}
+	if calls != 3 {
+		t.Errorf("42 calls = %d, want 3", calls)
+	}
+}
+
+func TestLongRetryAfterIsBusy(t *testing.T) {
+	var calls int
+	c := newTestClient(t, func(w http.ResponseWriter, r *http.Request) {
+		calls++
+		w.Header().Set("Retry-After", "3600")
+		w.WriteHeader(http.StatusTooManyRequests)
+	})
+
+	start := time.Now()
+	if _, err := c.Profile(context.Background(), "tok"); !errors.Is(err, upstream.ErrBusy) {
+		t.Fatalf("err = %v, want ErrBusy", err)
+	}
+	if d := time.Since(start); d > time.Second || calls != 1 {
+		t.Errorf("took %v with %d calls, want one call and no sleep", d, calls)
+	}
+}
+
+func TestPersistent429IsBusy(t *testing.T) {
+	c := newTestClient(t, func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Retry-After", "0")
+		w.WriteHeader(http.StatusTooManyRequests)
+	})
+	c.cfg.RatePerSecond = 100
+	if _, err := c.Profile(context.Background(), "tok"); !errors.Is(err, upstream.ErrBusy) {
+		t.Fatalf("err = %v, want ErrBusy", err)
 	}
 }

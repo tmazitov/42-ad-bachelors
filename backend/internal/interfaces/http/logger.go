@@ -1,11 +1,14 @@
 package http
 
 import (
+	"errors"
 	"log/slog"
 	"time"
 
 	"github.com/gofiber/fiber/v3"
 	"github.com/gofiber/fiber/v3/middleware/requestid"
+
+	"github.com/tmazitov/42-ad-bachelors/backend/internal/application/upstream"
 )
 
 // requestLogger logs one structured line per request.
@@ -20,6 +23,8 @@ func requestLogger(log *slog.Logger) fiber.Handler {
 			status = fiber.StatusInternalServerError
 			if fe, ok := err.(*fiber.Error); ok {
 				status = fe.Code
+			} else if errors.Is(err, upstream.ErrBusy) {
+				status = fiber.StatusServiceUnavailable
 			}
 		}
 

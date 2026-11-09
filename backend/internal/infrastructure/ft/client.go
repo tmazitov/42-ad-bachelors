@@ -17,6 +17,7 @@ import (
 
 	"github.com/tmazitov/42-ad-bachelors/backend/internal/application/auth"
 	"github.com/tmazitov/42-ad-bachelors/backend/internal/application/progress"
+	"github.com/tmazitov/42-ad-bachelors/backend/internal/application/upstream"
 	"github.com/tmazitov/42-ad-bachelors/backend/internal/domain/curriculum"
 	"github.com/tmazitov/42-ad-bachelors/backend/internal/domain/student"
 )
@@ -30,6 +31,10 @@ const (
 // maxRetries is how many times a 429 response is retried.
 const maxRetries = 3
 
+// defaultMaxWait is how long a request may wait for the rate limiters or a
+// 429's Retry-After before failing with upstream.ErrBusy.
+const defaultMaxWait = 5 * time.Second
+
 // Config holds the 42 OAuth application credentials and rate limits.
 type Config struct {
 	BaseURL      string
@@ -39,6 +44,9 @@ type Config struct {
 	// RatePerSecond and RatePerHour cap API requests; 0 means the 42 default.
 	RatePerSecond int
 	RatePerHour   int
+	// MaxWait caps the wait for a rate limiter or Retry-After; longer waits
+	// fail with upstream.ErrBusy. 0 means 5s.
+	MaxWait time.Duration
 }
 
 // Client talks to the 42 API. It implements auth.Provider,
@@ -61,6 +69,9 @@ func NewClient(cfg Config) *Client {
 	}
 	if cfg.RatePerHour <= 0 {
 		cfg.RatePerHour = defaultRatePerHour
+	}
+	if cfg.MaxWait <= 0 {
+		cfg.MaxWait = defaultMaxWait
 	}
 	return &Client{
 		cfg:       cfg,
@@ -231,8 +242,9 @@ func (c *Client) CompletedProjects(ctx context.Context, accessToken string, id s
 }
 
 // do waits for the rate limiters, sends req and decodes a 2xx JSON response
-// into out. 429 responses are retried after Retry-After. An OAuth
-// "invalid_grant" error is returned as auth.ErrInvalidGrant.
+// into out. 429 responses are retried after Retry-After. Waits longer than
+// MaxWait, and a 429 that outlasts the retries, return upstream.ErrBusy. An
+// OAuth "invalid_grant" error is returned as auth.ErrInvalidGrant.
 func (c *Client) do(req *http.Request, out any) (http.Header, error) {
 	ctx := req.Context()
 	req.Header.Set("Accept", "application/json")
@@ -255,9 +267,13 @@ func (c *Client) do(req *http.Request, out any) (http.Header, error) {
 			return nil, err
 		}
 
-		if res.StatusCode == http.StatusTooManyRequests && attempt < maxRetries {
+		if res.StatusCode == http.StatusTooManyRequests {
 			res.Body.Close()
-			if err := sleep(ctx, retryAfter(res.Header.Get("Retry-After"))); err != nil {
+			delay := retryAfter(res.Header.Get("Retry-After"))
+			if attempt >= maxRetries || delay > c.cfg.MaxWait {
+				return nil, upstream.ErrBusy
+			}
+			if err := sleep(ctx, delay); err != nil {
 				return nil, err
 			}
 			continue
@@ -266,11 +282,31 @@ func (c *Client) do(req *http.Request, out any) (http.Header, error) {
 	}
 }
 
+// wait takes a token from both limiters, sleeping for at most MaxWait. If the
+// tokens would come later, nothing is taken and upstream.ErrBusy is returned.
 func (c *Client) wait(ctx context.Context) error {
-	if err := c.perHour.Wait(ctx); err != nil {
+	now := time.Now()
+	hour := c.perHour.ReserveN(now, 1)
+	second := c.perSecond.ReserveN(now, 1)
+	cancel := func() {
+		hour.CancelAt(now)
+		second.CancelAt(now)
+	}
+
+	if !hour.OK() || !second.OK() {
+		cancel()
+		return upstream.ErrBusy
+	}
+	delay := max(hour.DelayFrom(now), second.DelayFrom(now))
+	if delay > c.cfg.MaxWait {
+		cancel()
+		return upstream.ErrBusy
+	}
+	if err := sleep(ctx, delay); err != nil {
+		cancel()
 		return err
 	}
-	return c.perSecond.Wait(ctx)
+	return nil
 }
 
 // retryAfter parses a Retry-After header in seconds, defaulting to 1s.

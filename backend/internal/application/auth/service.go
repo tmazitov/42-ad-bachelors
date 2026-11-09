@@ -22,6 +22,10 @@ var (
 	ErrUnauthenticated = errors.New("not signed in")
 )
 
+// loginTimeout bounds a sign-in: the code exchange, the profile and the first
+// project sync all call 42.
+const loginTimeout = 20 * time.Second
+
 // Token is a 42 OAuth token pair.
 type Token struct {
 	AccessToken  string
@@ -78,6 +82,9 @@ func (s *Service) AuthorizeURL(state string) string {
 // projects and opens a session. It returns the session token and its expiry.
 // A failed sync is logged but does not fail the login.
 func (s *Service) Login(ctx context.Context, code string) (token string, expires time.Time, err error) {
+	ctx, cancel := context.WithTimeout(ctx, loginTimeout)
+	defer cancel()
+
 	t, err := s.provider.ExchangeCode(ctx, code)
 	if err != nil {
 		return "", time.Time{}, err

@@ -3,9 +3,11 @@ package progress
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"time"
 
+	"github.com/tmazitov/42-ad-bachelors/backend/internal/application/upstream"
 	"github.com/tmazitov/42-ad-bachelors/backend/internal/domain/curriculum"
 	"github.com/tmazitov/42-ad-bachelors/backend/internal/domain/leaderboard"
 	"github.com/tmazitov/42-ad-bachelors/backend/internal/domain/student"
@@ -65,8 +67,8 @@ type SyncReport struct {
 // SyncAll syncs, one at a time with the app token, every registered student
 // whose projects were never synced or were synced at least maxAge ago (a login
 // syncs the student too, so active students are skipped). A failing student
-// is recorded in the report and does not stop the run; a cancelled context or
-// an unavailable app token does.
+// is recorded in the report and does not stop the run; a cancelled context, an
+// unavailable app token or a used-up 42 budget (upstream.ErrBusy) does.
 func (s *Service) SyncAll(ctx context.Context, maxAge time.Duration) (report SyncReport, err error) {
 	start := s.now()
 	defer func() { report.Duration = s.now().Sub(start) }()
@@ -94,6 +96,9 @@ func (s *Service) SyncAll(ctx context.Context, maxAge time.Duration) (report Syn
 		if err := s.SyncStudent(ctx, token, st.ID); err != nil {
 			if ctx.Err() != nil {
 				return report, ctx.Err()
+			}
+			if errors.Is(err, upstream.ErrBusy) {
+				return report, err
 			}
 			report.Failures = append(report.Failures, SyncFailure{Login: st.Login, Err: err})
 			continue

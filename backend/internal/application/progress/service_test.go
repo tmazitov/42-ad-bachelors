@@ -6,18 +6,23 @@ import (
 	"testing"
 	"time"
 
+	"github.com/tmazitov/42-ad-bachelors/backend/internal/application/upstream"
 	"github.com/tmazitov/42-ad-bachelors/backend/internal/domain/curriculum"
 	"github.com/tmazitov/42-ad-bachelors/backend/internal/domain/student"
 )
 
 type fakeSource struct {
 	failFor map[student.ID]bool
+	failErr error // returned for failFor; default "42 says no"
 	tokens  []string
 }
 
 func (f *fakeSource) CompletedProjects(_ context.Context, token string, id student.ID) ([]student.CompletedProject, error) {
 	f.tokens = append(f.tokens, token)
 	if f.failFor[id] {
+		if f.failErr != nil {
+			return nil, f.failErr
+		}
 		return nil, errors.New("42 says no")
 	}
 	return []student.CompletedProject{{ProjectID: 1314}}, nil
@@ -109,5 +114,20 @@ func TestSyncAllSkipsRecentlySynced(t *testing.T) {
 	}
 	if len(repo.replaced) != 2 || repo.replaced[0] != 2 || repo.replaced[1] != 3 {
 		t.Errorf("replaced = %v, want [2 3]", repo.replaced)
+	}
+}
+
+func TestSyncAllStopsWhen42IsBusy(t *testing.T) {
+	repo := newRepo()
+	src := &fakeSource{failFor: map[student.ID]bool{2: true}, failErr: upstream.ErrBusy}
+	svc := NewService(src, fakeTokens{}, repo, curriculum.ADBachelor())
+
+	report, err := svc.SyncAll(context.Background(), 24*time.Hour)
+	if !errors.Is(err, upstream.ErrBusy) {
+		t.Fatalf("err = %v, want ErrBusy", err)
+	}
+	// alice synced, bob hit the busy budget, carol was not attempted.
+	if report.Synced != 1 || len(src.tokens) != 2 {
+		t.Errorf("report = %+v, 42 calls = %d", report, len(src.tokens))
 	}
 }

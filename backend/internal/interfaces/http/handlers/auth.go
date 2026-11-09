@@ -11,6 +11,7 @@ import (
 	"github.com/gofiber/fiber/v3"
 
 	"github.com/tmazitov/42-ad-bachelors/backend/internal/application/auth"
+	"github.com/tmazitov/42-ad-bachelors/backend/internal/application/upstream"
 	"github.com/tmazitov/42-ad-bachelors/backend/internal/domain/student"
 )
 
@@ -50,7 +51,8 @@ func Login(svc *auth.Service, cfg AuthConfig) fiber.Handler {
 // Callback finishes the OAuth flow. 42 redirects the browser to the app's
 // /auth/callback page (which shows a loader), and that page posts the query
 // here: {"code", "state", "error"}. On success it sets the session cookie and
-// returns 204; otherwise 400 with {"error": "denied" | "state" | "failed"}.
+// returns 204; otherwise 400 with {"error": "denied" | "state" | "failed"}, or
+// 503 with {"error": "busy"} when the 42 API budget is used up.
 func Callback(svc *auth.Service, cfg AuthConfig, log *slog.Logger) fiber.Handler {
 	return func(c fiber.Ctx) error {
 		var req struct {
@@ -80,6 +82,9 @@ func Callback(svc *auth.Service, cfg AuthConfig, log *slog.Logger) fiber.Handler
 		}
 
 		token, expires, err := svc.Login(c.Context(), req.Code)
+		if errors.Is(err, upstream.ErrBusy) {
+			return c.Status(fiber.StatusServiceUnavailable).JSON(fiber.Map{"error": "busy"})
+		}
 		if err != nil {
 			if !errors.Is(err, auth.ErrInvalidGrant) {
 				log.ErrorContext(c.Context(), "login failed", "err", err)
