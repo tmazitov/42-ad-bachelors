@@ -21,6 +21,7 @@ func TestTTL(t *testing.T) {
 
 	// Full: the expired entry goes first.
 	c.Set("b", 2)
+	now = now.Add(time.Second) // b is older than c
 	c.Set("c", 3)
 	if c.Len() != 2 {
 		t.Errorf("len = %d, want 2 (expired a evicted)", c.Len())
