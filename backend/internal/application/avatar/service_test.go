@@ -3,7 +3,9 @@ package avatar
 import (
 	"context"
 	"errors"
+	"strings"
 	"testing"
+	"time"
 	"unsafe"
 )
 
@@ -75,12 +77,100 @@ func TestCacheKeyDoesNotAliasCaller(t *testing.T) {
 	if string(img.Data) != b {
 		t.Errorf("got the image of %s for %s", img.Data, b)
 	}
-	for k := range svc.cache {
+	for k := range svc.items {
 		if k != a && k != b {
 			t.Errorf("unexpected cache key %q", k)
 		}
 	}
-	if _, ok := svc.cache[a]; !ok {
+	if _, ok := svc.items[a]; !ok {
 		t.Error("entry for the first URL lost its key")
+	}
+}
+
+// sizedSource returns images of a fixed size and counts calls per URL.
+type sizedSource struct {
+	size  int
+	calls map[string]int
+}
+
+func (s *sizedSource) Image(_ context.Context, u string) (Image, error) {
+	if s.calls == nil {
+		s.calls = map[string]int{}
+	}
+	s.calls[u]++
+	if strings.Contains(u, "missing") {
+		return Image{}, ErrNotFound
+	}
+	return Image{ContentType: "image/jpeg", Data: make([]byte, s.size)}, nil
+}
+
+func TestQueryAndFragmentDoNotBypassTheCache(t *testing.T) {
+	src := &sizedSource{size: 10}
+	svc := NewService(src)
+	const base = "https://cdn.intra.42.fr/users/abc/medium_jdoe.jpg"
+	for _, u := range []string{base, base + "?a=1", base + "?a=2", base + "#x", base + "?"} {
+		if _, err := svc.Get(context.Background(), u); err != nil {
+			t.Fatalf("Get(%q): %v", u, err)
+		}
+	}
+	if len(src.calls) != 1 || src.calls[base] != 1 {
+		t.Errorf("source calls = %v, want one call for the bare URL", src.calls)
+	}
+}
+
+func TestCacheIsBoundedByBytes(t *testing.T) {
+	src := &sizedSource{size: 400}
+	svc := NewService(src)
+	svc.maxBytes = 1000 // room for 2 images
+	get := func(name string) {
+		t.Helper()
+		if _, err := svc.Get(context.Background(), "https://cdn.intra.42.fr/users/x/"+name+".jpg"); err != nil {
+			t.Fatal(err)
+		}
+	}
+
+	get("a")
+	get("b")
+	get("a") // a is now the most recently used
+	get("c") // evicts b
+	if svc.bytes != 800 || svc.order.Len() != 2 {
+		t.Errorf("bytes = %d, entries = %d; want 800, 2", svc.bytes, svc.order.Len())
+	}
+	get("a")
+	get("b")
+	if n := src.calls["https://cdn.intra.42.fr/users/x/a.jpg"]; n != 1 {
+		t.Errorf("a fetched %d times, want 1 (it was recently used)", n)
+	}
+	if n := src.calls["https://cdn.intra.42.fr/users/x/b.jpg"]; n != 2 {
+		t.Errorf("b fetched %d times, want 2 (it was evicted)", n)
+	}
+
+	// An image larger than the whole cache is served but not stored.
+	src.size = 2000
+	get("huge")
+	if svc.bytes > svc.maxBytes {
+		t.Errorf("bytes = %d over the cap", svc.bytes)
+	}
+}
+
+func TestNotFoundIsCachedBriefly(t *testing.T) {
+	src := &sizedSource{size: 10}
+	svc := NewService(src)
+	now := time.Date(2026, 11, 9, 12, 0, 0, 0, time.UTC)
+	svc.now = func() time.Time { return now }
+	const u = "https://cdn.intra.42.fr/users/x/missing.jpg"
+
+	for range 3 {
+		if _, err := svc.Get(context.Background(), u); !errors.Is(err, ErrNotFound) {
+			t.Fatalf("err = %v, want ErrNotFound", err)
+		}
+	}
+	if src.calls[u] != 1 {
+		t.Errorf("calls = %d, want 1", src.calls[u])
+	}
+	now = now.Add(11 * time.Minute)
+	svc.Get(context.Background(), u)
+	if src.calls[u] != 2 {
+		t.Errorf("calls = %d after 11 minutes, want 2", src.calls[u])
 	}
 }

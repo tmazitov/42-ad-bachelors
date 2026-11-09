@@ -30,7 +30,7 @@ Docker: in production use the root `compose.yaml` (nginx entry point, frontend, 
 | GET | `/api/v1/students/:login` 🔒 | Any 42 student; fetched from 42 and stored if unknown. 404 if 42 has no such login |
 | GET | `/api/v1/students?search=&page=` 🔒 | Registered students matching login or display name, 10 per page |
 | GET | `/api/v1/leaderboard` 🔒 | Synced registered students ranked by credits (ties share a rank) |
-| GET | `/api/v1/avatar?url=` | Proxies a `https://cdn.intra.42.fr/users/...` image. The CDN requires auth, so `<img>` can't load it directly. 400 for other URLs |
+| GET | `/api/v1/avatar?url=` | Session required. Proxies a `https://cdn.intra.42.fr/users/...` image. The CDN requires auth, so `<img>` can't load it directly. 400 for other URLs. Cached in a 50 MB LRU keyed by the URL without query/fragment; not-found answers cached 10 min |
 
 🔒 = needs the session cookie (401 otherwise).
 
@@ -50,7 +50,7 @@ internal/
     auth/              OAuth sign-in, sessions, logout; Provider port
     students/          Profiles and search from the DB, refreshed from 42 when stale; ProfileSource port
     progress/          Project sync, leaderboard; ProjectSource port
-    avatar/            42 CDN image proxy with in-memory cache; Source port
+    avatar/            42 CDN image proxy with a byte-capped LRU cache; Source port
   infrastructure/      Adapters to the outside world
     ft/                42 intra API client, rate-limited, cached app token (implements auth.Provider,
                        students.ProfileSource, progress.ProjectSource, avatar.Source)

@@ -58,12 +58,14 @@ func NewServer(cfg config.Config, deps Deps) *fiber.App {
 
 	api := app.Group("/api/v1")
 	api.Get("/curriculum", handlers.Curriculum(deps.Curriculum))
-	api.Get("/avatar", handlers.Avatar(deps.Avatar))
 
 	api.Get("/auth/login", handlers.Login(deps.Auth, authCfg))
 	api.Post("/auth/callback", handlers.Callback(deps.Auth, authCfg, deps.Log))
 	api.Post("/auth/logout", handlers.Logout(deps.Auth, authCfg))
 
+	// Avatars need a session too: <img> requests carry the cookie, and an
+	// open proxy would let anyone spend memory and CDN calls.
+	api.Get("/avatar", signedIn, handlers.Avatar(deps.Avatar))
 	api.Get("/me", signedIn, handlers.Me(deps.Students))
 	api.Put("/me/stream", signedIn, handlers.SetMyStream(deps.Students))
 	api.Put("/me/modules", signedIn, handlers.MarkMyModule(deps.Students))
